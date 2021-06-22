@@ -4,7 +4,7 @@ import torch
 from torch import nn
 
 from torchinfo import summary
-
+from creator import ProposalCreator
 
 
 class RegionProposalNetwork(nn.Module):
@@ -32,16 +32,17 @@ class RegionProposalNetwork(nn.Module):
 
 
         self.feat_stride = feat_stride
-        #self.proposal_layer = ProposalCreator(self, **proposal_creator_params)
         self.n_anchor = self.base_anchors.shape[0]
         self.conv1   = nn.Conv2d(in_channels,  mid_channels, 3, 1, 1)
         self.relu    = nn.ReLU()
         self.score   = nn.Conv2d(mid_channels, self.n_anchor * 2, 1, 1, 0)
         self.loc     = nn.Conv2d(mid_channels, self.n_anchor * 4, 1, 1, 0)
+        self.proposal_layer = ProposalCreator(self, **proposal_creator_params)
+
 
     def forward(self, x, img_size, scale=1.):
         n, _, hh, ww = x.shape
-        anchor = _generated_all_anchors(hh*self.feat_stride, ww*self.feat_stride)
+        anchor = self._generated_all_anchor(hh*self.feat_stride, ww*self.feat_stride)
 
         x = self.conv1(x)
         x = self.relu(x)
@@ -74,22 +75,29 @@ class RegionProposalNetwork(nn.Module):
         #roi_indices = np.concatenate(roi_indices, axis=0)
         return rpn_locs, rpn_scores, rois, roi_indices, anchor
 
-    def _generated_all_anchor(height, width):
+    def _generated_all_anchor(self, height, width):
         cell_x = torch.arange(self.feat_stride/2, width,  self.feat_stride)
         cell_y = torch.arange(self.feat_stride/2, height, self.feat_stride)
         cell_x, cell_y = torch.meshgrid(cell_x, cell_y)
         cell = torch.stack((cell_x.ravel(), cell_y.ravel(), cell_x.ravel(), cell_y.ravel()), axis=1)
 
-        A = self.base_anchors[0]
+        A = self.base_anchors.shape[0]
         K = cell.shape[0]
         # add A anchors (1, A, 4) to
         # cell K shifts (K, 1, 4) to get
         # shift anchors (K, A, 4)
         # reshape to (K*A, 4) shifted anchors
         # return (K*A, 4)
-        anchor = anchor_base.reshape((1, A, 4)) + cell.reshape((1, K, 4)).permute((1, 0, 2))
+        print(A)
+        anchor = self.base_anchors.reshape((1, A, 4)) + cell.reshape((1, K, 4)).permute((1, 0, 2))
         anchor = anchor.reshape((K * A, 4))
         return anchor
 
+
+
 rpn_inst = RegionProposalNetwork()
 summary(rpn_inst)
+
+x = torch.zeros([8, 512, 50, 40], dtype=torch.float32)
+outputs = rpn_inst(x, x.shape[2:])
+
