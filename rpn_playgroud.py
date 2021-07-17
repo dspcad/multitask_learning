@@ -224,8 +224,28 @@ def rpn_loss():
                     #print(" bbox: {}    anchor:{}   {:.2f}".format(i,j,tbl[i][j]))
                     fg_cls_label[j] = 1
 
+                    anchor_x1 = int(max(anchor[j][0],0))
+                    anchor_y1 = int(max(anchor[j][1],0))
+                    anchor_x2 = int(min(anchor[j][2],width-1))
+                    anchor_y2 = int(min(anchor[j][3],height-1))
+                    cate_id = int(obj['category_id'].numpy())
+                    cv2.rectangle(img, (anchor_x1, anchor_y1), (anchor_x2, anchor_y2), (255,0,0), 1)
+                    print("    anchor > 0.7: {}     {} {} {} {}".format(categories[cate_id], anchor_x1, anchor_y1, anchor_x2, anchor_y2))
+                    cv2.putText(img, "{} {} {} {}".format(anchor_x1, anchor_y1, anchor_x2, anchor_y2), (anchor_x1, anchor_y1 - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0,255,0), 1)
+
             idx = np.argmax(tbl[i])
-            fg_cls_label[idx] = 1
+            if tbl[i][idx] != 0:
+                fg_cls_label[idx] = 1
+                anchor_x1 = int(max(anchor[idx][0],0))
+                anchor_y1 = int(max(anchor[idx][1],0))
+                anchor_x2 = int(min(anchor[idx][2],width-1))
+                anchor_y2 = int(min(anchor[idx][3],height-1))
+                cate_id = int(obj['category_id'].numpy())
+                cv2.rectangle(img, (anchor_x1, anchor_y1), (anchor_x2, anchor_y2), (255,0,0), 1)
+                print("    anchor > 0.7: {}     {} {} {} {}".format(categories[cate_id], anchor_x1, anchor_y1, anchor_x2, anchor_y2))
+                cv2.putText(img, "{} {} {} {}".format(anchor_x1, anchor_y1, anchor_x2, anchor_y2), (anchor_x1, anchor_y1 - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0,255,0), 1)
+
+
             #print("# of fg anchors: ", np.count_nonzero(fg_cls_label == 1))
 
         max_iou = np.amax(tbl,axis=0)
@@ -233,25 +253,25 @@ def rpn_loss():
             if fg_cls_label[j] == -1 and max_iou[j]<0.3:
                 fg_cls_label[j] = 0
 
-        print("# of fg anchors: ", np.count_nonzero(fg_cls_label == 1))
+        print("# of fg anchors: {} ".format(np.count_nonzero(fg_cls_label == 1)))
         print("# of bg anchors: ", np.count_nonzero(fg_cls_label == 0))
-        for obj in targets:
-            cate_id = int(obj['category_id'].numpy())
-            bbox = [float(b.numpy()) for b in obj['bbox']]
-            x,y,w,h = [int(a) for a in bbox]
-            print("{}: {} {}".format(cate_id, categories[cate_id], [x,y,w,h]))
-            x1,y1,x2,y2 = x,y,x+w,y+h
-            x1,y1,x2,y2 = rescaleBBox([x1,y1,x2,y2], (raw_w, raw_h), (width,height))
-            print("scaled: {}: {} {}".format(cate_id, categories[cate_id], [x1,y1,x2,y2]))
-            cv2.rectangle(img, (x1, y1), (x2, y2), (255,0,0), 1)
-            #cv2.rectangle(img, (x, y), (x+w, y+h), (255,0,0), 1)
-            cv2.putText(img, "{}".format(categories[cate_id]), (x1, y1 - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0,255,0), 1)
+#        for obj in targets:
+#            cate_id = int(obj['category_id'].numpy())
+#            bbox = [float(b.numpy()) for b in obj['bbox']]
+#            x,y,w,h = [int(a) for a in bbox]
+#            print("{}: {} {}".format(cate_id, categories[cate_id], [x,y,w,h]))
+#            x1,y1,x2,y2 = x,y,x+w,y+h
+#            x1,y1,x2,y2 = rescaleBBox([x1,y1,x2,y2], (raw_w, raw_h), (width,height))
+#            print("scaled: {}: {} {}".format(cate_id, categories[cate_id], [x1,y1,x2,y2]))
+#            cv2.rectangle(img, (x1, y1), (x2, y2), (255,0,0), 1)
+#            #cv2.rectangle(img, (x, y), (x+w, y+h), (255,0,0), 1)
+#            cv2.putText(img, "{}".format(categories[cate_id]), (x1, y1 - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0,255,0), 1)
 
         cv2.imshow(' ', img)
         cv2.waitKey()
 
 
-        if num==3:
+        if num==1:
             break
 
         num = num + 1
