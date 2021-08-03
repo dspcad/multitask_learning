@@ -21,7 +21,7 @@ def conv3x3(in_channels, out_channels, stride=1):
 # 1x1 convolution
 def conv1x1(in_channels, out_channels, stride=1):
     return nn.Conv2d(in_channels, out_channels, kernel_size=1, 
-                     stride=stride, padding=1, bias=False)
+                     stride=stride, padding=0, bias=False)
 
 
 # Residual block using 3x3->3x3 kernel
@@ -56,11 +56,11 @@ class ResidualBlockBottleneck(nn.Module):
         super(ResidualBlockBottleneck, self).__init__()
         self.mid_channels = int(out_channels/4)
 
-        self.conv1 = conv1x1(in_channels, self.mid_channels, stride)
+        self.conv1 = conv1x1(in_channels, self.mid_channels)
         self.bn1 = nn.BatchNorm2d(self.mid_channels)
-        self.conv2 = conv3x3(self.mid_channels, self.mid_channels)
+        self.conv2 = conv3x3(self.mid_channels, self.mid_channels, stride)
         self.bn2 = nn.BatchNorm2d(self.mid_channels )
-        self.conv3 = conv1x1(self.mid_channels, out_channels, stride)
+        self.conv3 = conv1x1(self.mid_channels, out_channels)
         self.bn3 = nn.BatchNorm2d(out_channels)
         self.relu = nn.ReLU(inplace=True)
         self.downsample = downsample
@@ -93,7 +93,7 @@ class ResNet_small(nn.Module):
         self.conv1 = conv7x7(3, 64)
         self.bn1   = nn.BatchNorm2d(64)
         self.relu  = nn.ReLU(inplace=True)
-        self.max_pool = nn.MaxPool2d(kernel_size=3, stride=2)
+        self.max_pool = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
         self.conv2_layer = self.make_layer(block, 64, layers[0])
         self.conv3_layer = self.make_layer(block, 128, layers[1], 2)
         self.conv4_layer = self.make_layer(block, 256, layers[2], 2)
@@ -136,7 +136,7 @@ class ResNet_large(nn.Module):
         self.conv1 = conv7x7(3, 64)
         self.bn1   = nn.BatchNorm2d(64)
         self.relu  = nn.ReLU(inplace=True)
-        self.max_pool = nn.MaxPool2d(kernel_size=3, stride=2)
+        self.max_pool = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
         self.conv2_layer = self.make_layer(block, 256, layers[0])
         self.conv3_layer = self.make_layer(block, 512, layers[1], 2)
         self.conv4_layer = self.make_layer(block, 1024, layers[2], 2)
