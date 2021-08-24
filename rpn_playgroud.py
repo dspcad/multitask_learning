@@ -148,7 +148,7 @@ def rpn_loss():
 
     print("    1. load coco train2017")
     transform_train = transforms.Compose([transforms.ToTensor()])
-    coco_train = CocoDetection("/home/hhwu/Datasets/COCO/train2017", "/home/hhwu/Datasets/COCO/annotations_trainval2017/annotations/instances_train2017.json", transform=transform_train)
+    coco_train = CocoDetection("/home/hhwu/datasets/coco/train2017", "/home/hhwu/datasets/coco/annotations/instances_train2017.json", transform=transform_train)
     dataloader = DataLoader(coco_train, batch_size=1, shuffle=True, num_workers=0)
     # print(type(coco_train))
 

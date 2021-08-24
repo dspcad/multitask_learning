@@ -173,9 +173,24 @@ class ResNet_large(nn.Module):
         return out
 
 
-resnet_50 = ResNet_large(ResidualBlockBottleneck, [3, 4, 6, 3]).to(device)
-summary(resnet_50)
+def test():
+    resnet_50 = ResNet_large(ResidualBlockBottleneck, [3, 4, 6, 3]).to(device)
+    summary(resnet_50)
+    
+    model = torchvision.models.resnet50().to(device)
+    summary(model)
 
-model = torchvision.models.resnet50()
-summary(model)
+    data = torch.rand(1, 3, 32, 32).cuda()
+    labels = torch.rand(1, 1000).cuda()
+
+
+    #prediction = resnet_50(data) # forward pass
+    prediction = model(data) # forward pass
+    print("pred: ", prediction.shape)
+
+
+
+
+if __name__ == "__main__":
+    test()
 
