@@ -56,8 +56,8 @@ class RegionProposalNetwork(nn.Module):
         return rpn_locs, rpn_scores
 
     def _generated_all_anchor(self, height, width):
-        cell_x = torch.arange(self.feat_stride/2, width,  self.feat_stride)
-        cell_y = torch.arange(self.feat_stride/2, height, self.feat_stride)
+        cell_x = torch.arange(0, width,  self.feat_stride)
+        cell_y = torch.arange(0, height, self.feat_stride)
         cell_x, cell_y = torch.meshgrid(cell_x, cell_y)
         cell = torch.stack((cell_x.ravel(), cell_y.ravel(), cell_x.ravel(), cell_y.ravel()), axis=1)
 

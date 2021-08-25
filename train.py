@@ -6,6 +6,7 @@ from torchinfo import summary
 from torchvision.datasets.coco import CocoDetection
 from torch.utils.data import DataLoader
 import torchvision.transforms as transforms
+import torch.optim as optim
 
 from resnet import *
 from rpn import *
@@ -85,9 +86,14 @@ def train():
 
     num = 0
 
+    cls_criterion = nn.CrossEntropyLoss(ignore_index=-1)
+    optimizer = optim.SGD(net.parameters(), lr=0.001, momentum=0.9, weight_decay=5e-4)
+    train_loss = 0
+
     for batch_idx, (inputs, targets) in enumerate(dataloader):
         print(device)
         inputs = inputs.to(device)
+        batch_size = inputs.shape[0]
         print("intput shape: ", inputs.shape)
         loc_output, cls_output = net(inputs)
         print("output shape: ")
@@ -100,6 +106,8 @@ def train():
         img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
         height, width, _ = img.shape
 
+        cv2.imshow(' ', img)
+        cv2.waitKey()
 
         gt_bbox   = len(targets)
         num_anchor = anchor.shape[0]
@@ -132,7 +140,7 @@ def train():
                 reg_label[j][3] = np.log(h/ha)
 
 
-
+                #foreground: IoU > 0.7 with any gt box
                 if(tbl[i][j]>0.7):
                     #print(" bbox: {}    anchor:{}   {:.2f}".format(i,j,tbl[i][j]))
                     fg_cls_label[j] = 1
@@ -149,6 +157,7 @@ def train():
                     print(f"    reg label:  {reg_label[j]}")
 
 
+            #foreground: the highest IoU with a gt box
             idx = np.argmax(tbl[i])
             if tbl[i][idx] != 0:
                 fg_cls_label[idx] = 1
@@ -163,6 +172,7 @@ def train():
                 print(f"    reg label:  {reg_label[idx]}")
 
 
+        #background: IoU < 0.3 for all gt boxes
         for j in range(0,num_anchor):
             idx = np.argmax(tbl[:,j])
             if tbl[idx][j] < 0.3:
@@ -176,6 +186,16 @@ def train():
         print("# of dont care anchors: ", np.count_nonzero(fg_cls_label == -1))
 
 
+        cls_output = cls_output.view(-1,2)
+        fg_cls_label = torch.from_numpy(fg_cls_label).to(device)
+
+        print(f"cls_output: {cls_output.shape}     fg_cls_label: {fg_cls_label.shape}")
+        loss = cls_criterion(cls_output, fg_cls_label)
+        loss.backward()
+        optimizer.step()
+
+        train_loss += loss.item()
+        print(f"train loss: {train_loss}")
 
         cv2.imshow(' ', img)
         cv2.waitKey()
