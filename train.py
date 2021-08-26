@@ -70,6 +70,32 @@ def IoU(bb1=list(),bb2=list()):
     return iou
 
 
+def gen_mini_batch(fg_cls_label,batch_size=256):
+    res_idx_0 = np.array(np.where(fg_cls_label == 0)).flatten()
+    res_idx_1 = np.array(np.where(fg_cls_label == 1)).flatten()
+
+    #print("Generate mini batch: ")
+    #print("    Before: ")
+    #print("    # of pos: ", len(res_idx_1))
+    #print("    # of neg: ", len(res_idx_0))
+    if len(res_idx_1)>batch_size/2:
+        non_selected_idx_of_pos = np.random.choice(res_idx_1,len(res_idx_1)-batch_size/2,replace=False)
+        for idx in non_selected_idx_of_pos:
+            fg_cls_label[idx]=-1
+
+    non_selected_idx_of_neg = np.random.choice(res_idx_0, len(res_idx_0)-batch_size + min(int(batch_size/2),len(res_idx_1)),replace=False)
+    for idx in non_selected_idx_of_neg:
+        fg_cls_label[idx]=-1
+
+    res_idx_0 = np.array(np.where(fg_cls_label == 0)).flatten()
+    res_idx_1 = np.array(np.where(fg_cls_label == 1)).flatten()
+
+    #print("    Before: ")
+    #print("    # of pos: ", len(res_idx_1))
+    #print("    # of neg: ", len(res_idx_0))
+
+    return fg_cls_label
+
 
 def train():
     print("    1. Construct Faster-RCNN")
@@ -81,6 +107,7 @@ def train():
 
     print("    2. Load coco train2017")
     transform_train = transforms.Compose([transforms.ToTensor()])
+    #transform_train = transforms.Compose([transforms.Resize(800),transforms.ToTensor()])
     coco_train = CocoDetection("/home/hhwu/datasets/coco/train2017", "/home/hhwu/datasets/coco/annotations/instances_train2017.json", transform=transform_train)
     dataloader = DataLoader(coco_train, batch_size=1, shuffle=True, num_workers=0)
 
@@ -109,6 +136,7 @@ def train():
         cv2.imshow(' ', img)
         cv2.waitKey()
 
+        #scale_factor = float(640/min(height, width))
         gt_bbox   = len(targets)
         num_anchor = anchor.shape[0]
         tbl = np.zeros((gt_bbox,num_anchor))
@@ -158,18 +186,19 @@ def train():
 
 
             #foreground: the highest IoU with a gt box
-            idx = np.argmax(tbl[i])
-            if tbl[i][idx] != 0:
-                fg_cls_label[idx] = 1
-                anchor_x1 = int(max(anchor[idx][0],0))
-                anchor_y1 = int(max(anchor[idx][1],0))
-                anchor_x2 = int(min(anchor[idx][2],width-1))
-                anchor_y2 = int(min(anchor[idx][3],height-1))
-                cate_id = int(obj['category_id'].numpy())
-                cv2.rectangle(img, (anchor_x1, anchor_y1), (anchor_x2, anchor_y2), (255,0,0), 1)
-                print("    anchor > 0.0: {}     {} {} {} {}".format(categories[cate_id], anchor_x1, anchor_y1, anchor_x2, anchor_y2))
-                cv2.putText(img, "{} {} {} {}".format(anchor_x1, anchor_y1, anchor_x2, anchor_y2), (anchor_x1, anchor_y1 - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0,255,0), 1)
-                print(f"    reg label:  {reg_label[idx]}")
+            max_v = np.max(tbl[i])
+            for j in range(0,num_anchor):
+                if tbl[i][j] == max_v:
+                    fg_cls_label[j] = 1
+                    anchor_x1 = int(max(anchor[j][0],0))
+                    anchor_y1 = int(max(anchor[j][1],0))
+                    anchor_x2 = int(min(anchor[j][2],width-1))
+                    anchor_y2 = int(min(anchor[j][3],height-1))
+                    cate_id = int(obj['category_id'].numpy())
+                    cv2.rectangle(img, (anchor_x1, anchor_y1), (anchor_x2, anchor_y2), (255,0,0), 1)
+                    print("    anchor > 0.0: {}     {} {} {} {}".format(categories[cate_id], anchor_x1, anchor_y1, anchor_x2, anchor_y2))
+                    cv2.putText(img, "{} {} {} {}".format(anchor_x1, anchor_y1, anchor_x2, anchor_y2), (anchor_x1, anchor_y1 - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0,255,0), 1)
+                    print(f"    reg label:  {reg_label[j]}")
 
 
         #background: IoU < 0.3 for all gt boxes
@@ -181,6 +210,7 @@ def train():
                     fg_cls_label[j] = 0
                 #print(f"{j} anchor:      label:{fg_cls_label[idx]}")
 
+        fg_cls_label = gen_mini_batch(fg_cls_label)
         print("# of fg anchors: ", np.count_nonzero(fg_cls_label == 1))
         print("# of bg anchors: ", np.count_nonzero(fg_cls_label == 0))
         print("# of dont care anchors: ", np.count_nonzero(fg_cls_label == -1))
@@ -195,12 +225,13 @@ def train():
         optimizer.step()
 
         train_loss += loss.item()
-        print(f"train loss: {train_loss}")
+        avg = train_loss/(batch_idx+1)
+        print(f"{batch_idx}. Ave. train loss: {avg}")
 
         cv2.imshow(' ', img)
         cv2.waitKey()
 
-        if num==10:
+        if num==2:
             break
 
         num += 1
