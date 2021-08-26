@@ -79,7 +79,7 @@ def gen_mini_batch(fg_cls_label,batch_size=256):
     #print("    # of pos: ", len(res_idx_1))
     #print("    # of neg: ", len(res_idx_0))
     if len(res_idx_1)>batch_size/2:
-        non_selected_idx_of_pos = np.random.choice(res_idx_1,len(res_idx_1)-batch_size/2,replace=False)
+        non_selected_idx_of_pos = np.random.choice(res_idx_1,len(res_idx_1)-int(batch_size/2),replace=False)
         for idx in non_selected_idx_of_pos:
             fg_cls_label[idx]=-1
 
@@ -113,7 +113,9 @@ def train():
 
     num = 0
 
-    cls_criterion = nn.CrossEntropyLoss(ignore_index=-1)
+    rpn_cls_criterion = nn.CrossEntropyLoss(ignore_index=-1)
+    rpn_loc_criterion = nn.SmoothL1Loss()
+
     optimizer = optim.SGD(net.parameters(), lr=0.001, momentum=0.9, weight_decay=5e-4)
     train_loss = 0
 
@@ -219,12 +221,22 @@ def train():
         cls_output = cls_output.view(-1,2)
         fg_cls_label = torch.from_numpy(fg_cls_label).to(device)
 
+        loc_output = loc_output.view(-1,4)
+        reg_label = torch.from_numpy(reg_label).to(device)
+
         print(f"cls_output: {cls_output.shape}     fg_cls_label: {fg_cls_label.shape}")
-        loss = cls_criterion(cls_output, fg_cls_label)
-        loss.backward()
+        fg_cls_loss = rpn_cls_criterion(cls_output, fg_cls_label)
+
+        train_idx = [idx for idx in range(0,num_anchor) if fg_cls_label[idx]!=-1]
+        #tt1 = torch.as_tensor([reg_label[idx] for idx in train_idx])
+        print("debug: ", len(train_idx))
+        rpn_loc_loss = rpn_loc_criterion(loc_output[train_idx].float(),reg_label[train_idx].float())
+
+        total_loss = fg_cls_loss+0.1*rpn_loc_loss
+        total_loss.backward()
         optimizer.step()
 
-        train_loss += loss.item()
+        train_loss += total_loss.item()
         avg = train_loss/(batch_idx+1)
         print(f"{batch_idx}. Ave. train loss: {avg}")
 
