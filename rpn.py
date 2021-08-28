@@ -41,6 +41,10 @@ class RegionProposalNetwork(nn.Module):
         self.score   = nn.Conv2d(mid_channels, self.n_anchor * 2, 1, 1, 0)
         self.loc     = nn.Conv2d(mid_channels, self.n_anchor * 4, 1, 1, 0)
 
+        nn.init.normal_(self.conv1.weight, 0, 0.01)
+        nn.init.normal_(self.score.weight, 0, 0.01)
+        nn.init.normal_(self.loc.weight, 0, 0.01)
+
 
     def forward(self, x):
         n, _, hh, ww = x.shape

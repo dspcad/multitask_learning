@@ -35,6 +35,9 @@ class ResidualBlock(nn.Module):
         self.bn2 = nn.BatchNorm2d(out_channels)
         self.downsample = downsample
 
+        nn.init.normal_(self.conv1.weight, 0, 0.01)
+        nn.init.normal_(self.conv2.weight, 0, 0.01)
+
     def forward(self, x):
         residual = x
         out = self.conv1(x)
@@ -64,6 +67,10 @@ class ResidualBlockBottleneck(nn.Module):
         self.bn3 = nn.BatchNorm2d(out_channels)
         self.relu = nn.ReLU(inplace=True)
         self.downsample = downsample
+
+        nn.init.normal_(self.conv1.weight, 0, 0.01)
+        nn.init.normal_(self.conv2.weight, 0, 0.01)
+        nn.init.normal_(self.conv3.weight, 0, 0.01)
 
     def forward(self, x):
         residual = x
@@ -98,6 +105,8 @@ class ResNet_small(nn.Module):
         self.conv3_layer = self.make_layer(block, 128, layers[1], 2)
         self.conv4_layer = self.make_layer(block, 256, layers[2], 2)
         self.conv5_layer = self.make_layer(block, 512, layers[3], 2)
+
+        nn.init.normal_(self.conv1.weight, 0, 0.01)
 
     def make_layer(self, block, out_channels, blocks, stride=1):
         downsample = None
@@ -141,6 +150,8 @@ class ResNet_large(nn.Module):
         self.conv3_layer = self.make_layer(block, 512, layers[1], 2)
         self.conv4_layer = self.make_layer(block, 1024, layers[2], 2)
         self.conv5_layer = self.make_layer(block, 2048, layers[3], 2)
+
+        nn.init.normal_(self.conv1.weight, 0, 0.01)
 
     def make_layer(self, block, out_channels, blocks, stride=1):
         #downsample = None
