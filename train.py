@@ -13,7 +13,6 @@ from rpn import *
 from faster_rcnn import FasterRCNN
 import cv2, math
 import numpy as np
-from skimage.transform import rescale
 
 import logging, sys
 logging.basicConfig(format='%(levelname)-4s %(message)s',level=logging.INFO)
@@ -39,6 +38,11 @@ def loadLabels():
 def IoU(bb1=list(),bb2=list()):
     assert len(bb1) == 4
     assert len(bb2) == 4
+
+
+    if bb1[0] >= bb1[2] or bb1[1] >= bb1[3] or bb2[0] >= bb2[2] or bb2[1] >= bb2[3]:
+        print(f"BBox1: {bb1}  BBox2 : {bb2}")
+    #print(f"BBox1: {bb1}  BBox2 : {bb2}")
 
     assert bb1[0] < bb1[2]
     assert bb1[1] < bb1[3]
@@ -99,7 +103,7 @@ def gen_mini_batch(fg_cls_label,batch_size=128):
     return fg_cls_label
 
 
-def label_assignment(anchor, targets, img):
+def label_assignment(anchor, targets, img, scale):
     height, width, _ = img.shape
     gt_bbox   = len(targets)
     num_anchor = anchor.shape[0]
@@ -113,8 +117,8 @@ def label_assignment(anchor, targets, img):
         #bbox = [float(b.numpy()) for b in obj['bbox']]
         #print("debug: ", obj['bbox'])
         bbox = obj['bbox']
-        x,y,w,h = [int(a+0.5) for a in bbox]
-        x1,y1,x2,y2 = x,y,x+w,y+h
+        x,y,w,h = [a*scale for a in bbox]
+        x1,y1,x2,y2 = int(x+0.5),int(y+0.5),int(x+w+0.5),int(y+h+0.5)
 
         for j in range(0,num_anchor):
             tbl[i][j] = IoU([x1,y1,x2,y2], anchor[j])
@@ -181,7 +185,7 @@ def label_assignment(anchor, targets, img):
                 #print(f"{j} anchor:      label:{fg_cls_label[idx]}")
 
     raw_fg_cls_label = np.copy(fg_cls_label)
-    fg_cls_label = gen_mini_batch(fg_cls_label)
+    fg_cls_label = gen_mini_batch(fg_cls_label,256)
     logging.debug(f"# of fg anchors: {np.count_nonzero(fg_cls_label == 1)}")
     logging.debug(f"# of bg anchors: {np.count_nonzero(fg_cls_label == 0)}")
     logging.debug(f"# of dont care anchors: {np.count_nonzero(fg_cls_label == -1)}")
@@ -193,6 +197,24 @@ def label_assignment(anchor, targets, img):
     return raw_fg_cls_label, fg_cls_label, reg_label
 
 
+def rescale(imgs,targets, side_len):
+    bsize, _, hh, ww = imgs.shape
+
+    #print(f"  hh: {hh}    ww:{ww}")
+    scale = side_len/ww if hh > ww else side_len/hh
+    if hh > ww:
+        new_hh = int(hh * scale + 0.5)
+        new_ww = side_len
+    else:
+        new_hh = side_len
+        new_ww = int(ww * scale + 0.5)
+
+    #imgs = transforms.Resize(imgs, side_len)
+    #print(f" scale: {scale} new hh {new_hh}    new ww: {new_ww}")
+    imgs = torch.nn.functional.interpolate(imgs,size=(new_hh,new_ww), mode='bilinear')
+
+
+    return imgs, scale
 
 def train():
     logging.info("    1. Construct Faster-RCNN")
@@ -203,10 +225,11 @@ def train():
     net = net.to(device)
 
     logging.info("    2. Load coco train2017")
-    transform_train = transforms.Compose([transforms.ToTensor(),
-                                          transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])])
+    transform_train = transforms.Compose([transforms.ToTensor()])
+    #transform_train = transforms.Compose([transforms.ToTensor(),
+    #                                      transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])])
     #transform_train = transforms.Compose([transforms.Resize(800),transforms.ToTensor()])
-    coco_train = CocoDetection("/home/hhwu/datasets/coco/train2017", "/home/hhwu/datasets/coco/annotations/instances_train2017.json", transform=transform_train)
+    coco_train = CocoDetection("/home/hhwu/datasets/coco/train2017", "/home/hhwu/datasets/coco/annotations/instances_train2017.json", transform=transform_train, target_transform=None)
     dataloader = DataLoader(coco_train, batch_size=1, shuffle=True, num_workers=0)
 
     num = 0
@@ -215,12 +238,16 @@ def train():
     #rpn_loc_criterion = nn.SmoothL1Loss()
     rpn_loc_criterion = nn.L1Loss()
 
-    optimizer = optim.SGD(net.parameters(), lr=0.01, momentum=0.9, weight_decay=5e-4)
+    optimizer = optim.SGD(net.parameters(), lr=0.001, momentum=0.9, weight_decay=5e-4)
     train_loss = 0
     cls_loss = 0
     reg_loss = 0
 
     for batch_idx, (inputs, targets) in enumerate(dataloader):
+        inputs, scale = rescale(inputs,targets,640)
+
+
+        optimizer.zero_grad()
         logging.debug(f"Running on {device}")
         inputs = inputs.to(device)
         batch_size = inputs.shape[0]
@@ -229,22 +256,21 @@ def train():
         logging.debug("output shape: ")
         logging.debug(f"    loc: {loc_output.shape}")
         logging.debug(f"    cls: {cls_output.shape}")
-        logging.info(f"All anchors: {anchor.shape}")
+        logging.info(f"Scale: {scale} and all anchors: {anchor.shape}")
 
         img = inputs.permute(0,2,3,1).cpu().numpy()[0]
-        #img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
-        #height, width, _ = img.shape
+        img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
+        height, width, _ = img.shape
 
         #cv2.imshow(' ', img)
         #cv2.waitKey()
 
-        #scale_factor = float(640/min(height, width))
 
         cls_output = cls_output.view(-1,2)
         loc_output = loc_output.view(-1,4)
 
 
-        raw_fg_cls_label, fg_cls_label, reg_label = label_assignment(anchor, targets, img)
+        raw_fg_cls_label, fg_cls_label, reg_label = label_assignment(anchor, targets, img, scale)
         logging.info(f"cls_output: {cls_output.shape}     fg_cls_label: {fg_cls_label.shape}")
     
 
@@ -259,7 +285,7 @@ def train():
         #    if raw_fg_cls_label[idx] == 1:
         #        print("debug: ", raw_fg_cls_label[idx])
         #        mask[idx]=1
-        print(mask.shape)
+        logging.info(f"Sample cross entropy {cls_output[0]}")
         num_pos = np.count_nonzero(raw_fg_cls_label == 1)
         logging.info(f"Number of randomly picked positive anchors for loc regression: {num_pos}")
 
@@ -297,7 +323,7 @@ def train():
         #if num==2:
         #    break
 
-        #num += 1
+        num += 1
 
     #summary(resnet_50)
     #model = torchvision.models.resnet50()
