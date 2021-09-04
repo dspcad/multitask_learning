@@ -14,7 +14,7 @@ from faster_rcnn import FasterRCNN
 import cv2, math
 import numpy as np
 
-import logging, sys, time
+import logging, sys, time, os
 logging.basicConfig(format='%(levelname)-4s %(message)s',level=logging.INFO)
 
 np.set_printoptions(threshold=sys.maxsize)
@@ -158,20 +158,26 @@ def label_assignment(anchor, targets, img, scale):
         #logging.info("    {}     {} {} {} {}".format(categories[cate_id], x1, y1, x2, y2))
         #cv2.putText(img, "{}".format(categories[cate_id]), (x1, y1 - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0,255,0), 1)
         for j in range(0,num_anchor):
-            tbl[i][j] = IoU([x1,y1,x2,y2], anchor[j])
-
             wa = anchor[j][2]-anchor[j][0]
             ha = anchor[j][3]-anchor[j][1]
             xa = anchor[j][0]+wa/2
             ya = anchor[j][1]+ha/2
-            #tx
-            reg_label[j][0] = (x-xa)/wa
-            #ty
-            reg_label[j][1] = (y-ya)/wa
-            #tw
-            reg_label[j][2] = np.log(w/wa)
-            #th
-            reg_label[j][3] = np.log(h/ha)
+
+            #tbl[i][j] = IoU([x1,y1,x2,y2], anchor[j]) if abs(xa-x)*2< (w+wa) and abs(ya-y)*2 < (h+ha) else 0
+            if abs(xa-x)*2< (w+wa) and abs(ya-y)*2 < (h+ha):
+                tbl[i][j] = IoU([x1,y1,x2,y2], anchor[j])
+
+                #tx
+                reg_label[j][0] = (x-xa)/wa
+                #ty
+                reg_label[j][1] = (y-ya)/wa
+                #tw
+                reg_label[j][2] = np.log(w/wa)
+                #th
+                reg_label[j][3] = np.log(h/ha)
+
+
+
 
 
             
@@ -294,7 +300,7 @@ def train():
 
     # lr=0.002 no convergence ~ 30K overfitting?
     # lr=0.01 no convergence for fg/bg overfitting?
-    optimizer = optim.SGD(net.parameters(), lr=0.00001, momentum=0.9, weight_decay=5e-4)
+    optimizer = optim.SGD(net.parameters(), lr=0.0005, momentum=0.9, weight_decay=5e-4)
     train_loss = 0
     cls_loss = 0
     reg_loss = 0
@@ -339,6 +345,7 @@ def train():
         end = time.time()
         logging.debug(f"cls_output: {cls_output.shape}     fg_cls_label: {fg_cls_label.shape}")
         logging.info(f"Total label assignment runtime: {end-start}")
+        logging.info(f"    Learning Rate: {optimizer.param_groups[0]['lr']}")
     
 
 
@@ -353,6 +360,7 @@ def train():
         #    if raw_fg_cls_label[idx] == 1:
         #        print("debug: ", raw_fg_cls_label[idx])
         #        mask[idx]=1
+
         num_pos = np.count_nonzero(raw_fg_cls_label == 1)
         logging.info(f"Number of randomly picked positive anchors for loc regression: {num_pos}")
 
@@ -364,6 +372,7 @@ def train():
 
             #print(np.where(raw_fg_cls_label==1))
             selected_idx = np.where(raw_fg_cls_label==1)[0]
+            #logging.info(f"    Regression labels for pos one: {reg_label[selected_idx]}")
             rpn_loc_loss = rpn_loc_criterion(loc_output[selected_idx], reg_label[selected_idx])
 
         
@@ -408,7 +417,8 @@ def train():
         avg = train_loss/(batch_idx+1)
         avg_cls = cls_loss/(batch_idx+1)
         avg_reg = reg_loss/(batch_idx+1)
-        logging.info(f"    {batch_idx}. Ave. train loss: {avg}    current cls loss: {fg_cls_loss.item()}    current reg loss: {rpn_loc_loss_val}")
+        logging.info(f"    {batch_idx}. Ave. train loss: {avg}    average cls loss: {avg_cls}               average reg loss: {avg_reg}")
+        logging.info(f"                                                current cls loss: {fg_cls_loss.item()}    current reg loss: {rpn_loc_loss_val}")
         logging.info("---------------------------------------------------")
 
         #cv2.imshow(' ', img)
@@ -416,6 +426,9 @@ def train():
 
         #if num==2:
         #    break
+
+        if num>0 and num%10000==0:
+            torch.save( net.state_dict(), os.path.join( "./savedModels/",'fasterRCNN_itr_'+str(num)+'.pth') )
 
         num += 1
 
