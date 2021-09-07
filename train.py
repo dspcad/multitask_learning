@@ -115,9 +115,20 @@ def gen_mini_batch(fg_cls_label,batch_size=128):
     logging.info(f"    # of pos: {len(res_idx_1)}")
     logging.info(f"    # of neg: {len(res_idx_0)}")
 
-    non_selected_idx_of_neg = np.random.choice(res_idx_0, len(res_idx_0)-len(res_idx_1),replace=False)
-    for idx in non_selected_idx_of_neg:
-        fg_cls_label[idx]=-1
+
+    batch_size = min(len(res_idx_0),len(res_idx_1))
+
+    if len(res_idx_0) > batch_size:
+        non_selected_idx_of_neg = np.random.choice(res_idx_0, len(res_idx_0)-batch_size,replace=False)
+        for idx in non_selected_idx_of_neg:
+            fg_cls_label[idx]=-1
+
+
+    if len(res_idx_1) > batch_size:
+        non_selected_idx_of_pos = np.random.choice(res_idx_1, len(res_idx_1)-batch_size,replace=False)
+        for idx in non_selected_idx_of_pos:
+            fg_cls_label[idx]=-1
+
 
     res_idx_0 = np.array(np.where(fg_cls_label == 0)).flatten()
     res_idx_1 = np.array(np.where(fg_cls_label == 1)).flatten()
@@ -186,7 +197,8 @@ def label_assignment(anchor, targets, img, scale):
         #foreground: IoU > 0.7 with any gt box
         max_v = np.max(tbl[i])
         if max_v > 0:
-            fg_cls_label[np.logical_or(tbl[i]>0.7, tbl[i] == max_v)] = 1
+            fg_cls_label[np.logical_or(tbl[i]>0.5, tbl[i] == max_v)] = 1
+
         #for j in range(0,num_anchor):
         #    if tbl[i][j] == max_v or tbl[i][j]>0.7:
         #        fg_cls_label[j] = 1
@@ -213,8 +225,11 @@ def label_assignment(anchor, targets, img, scale):
     else:
         #background: IoU < 0.3 for all gt boxes
         for j in range(0,num_anchor):
-            idx = np.argmax(tbl[:,j])
-            if tbl[idx][j] < 0.3 and fg_cls_label[j] != 1:
+            #idx = np.argmax(tbl[:,j])
+            max_v = np.max(tbl[:,j])
+            #if tbl[idx][j] < 0.1 and fg_cls_label[j] != 1:
+            #if tbl[idx][j] == 0:
+            if max_v == 0:
                 fg_cls_label[j] = 0
 
     end = time.time()
@@ -222,7 +237,7 @@ def label_assignment(anchor, targets, img, scale):
 
     raw_fg_cls_label = np.copy(fg_cls_label)
 
-    fg_cls_label = gen_mini_batch(fg_cls_label,16)
+    fg_cls_label = gen_mini_batch(fg_cls_label,256)
     logging.info(f"# of fg anchors: {np.count_nonzero(fg_cls_label == 1)}")
     logging.info(f"# of bg anchors: {np.count_nonzero(fg_cls_label == 0)}")
     logging.info(f"# of dont care anchors: {np.count_nonzero(fg_cls_label == -1)}")
@@ -295,7 +310,8 @@ def train():
 
     rpn_cls_criterion = nn.CrossEntropyLoss(ignore_index=-1)
     #rpn_loc_criterion = nn.SmoothL1Loss()
-    rpn_loc_criterion = nn.L1Loss()
+    #rpn_loc_criterion = nn.L1Loss()
+    rpn_loc_criterion = nn.L1Loss(reduction='none')
 
 
     # lr=0.002 no convergence ~ 30K overfitting?
@@ -352,8 +368,8 @@ def train():
         #logging.info(f"    debug fg_cls_label: {fg_cls_label.shape}")
         fg_cls_loss = rpn_cls_criterion(cls_output, fg_cls_label)
 
-        #mask = np.array([[1,1,1,1] if raw_fg_cls_label[idx] == 1 else [0,0,0,0] for idx in range(0,anchor.shape[0])])
-        #mask = torch.from_numpy(mask).to(device)
+        mask = np.array([[1,1,1,1] if raw_fg_cls_label[idx] == 1 else [0,0,0,0] for idx in range(0,anchor.shape[0])])
+        mask = torch.from_numpy(mask).to(device)
 
         #mask = np.zeros(anchor.shape[0])
         #for idx in range(0,anchor.shape[0]):
@@ -366,14 +382,17 @@ def train():
 
 
         if num_pos > 0: 
-            #loc_output.register_hook(lambda grad: grad * mask.float())
-            #rpn_loc_loss = rpn_loc_criterion(loc_output.float(),reg_label.float())
+            selected_idx = np.where(raw_fg_cls_label==1)[0]
+
+            loc_output.register_hook(lambda grad: grad * mask.float())
+            rpn_loc_loss = rpn_loc_criterion(loc_output.float(),reg_label.float())
+            rpn_loc_loss = torch.mean(rpn_loc_loss[selected_idx])
 
 
             #print(np.where(raw_fg_cls_label==1))
-            selected_idx = np.where(raw_fg_cls_label==1)[0]
             #logging.info(f"    Regression labels for pos one: {reg_label[selected_idx]}")
-            rpn_loc_loss = rpn_loc_criterion(loc_output[selected_idx], reg_label[selected_idx])
+            #rpn_loc_loss = rpn_loc_criterion(loc_output[selected_idx], reg_label[selected_idx])
+            print("rpn_loc_loss: ", rpn_loc_loss)
 
         
             _, predicted = cls_output.max(1)
