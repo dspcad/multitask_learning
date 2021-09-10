@@ -310,31 +310,7 @@ def check_bbox(targets, img, num):
         #logging.info("    {}     {} {} {} {}".format(categories[cate_id], x1, y1, x2, y2))
 
 
-def train():
-    logging.info("    1. Construct Faster-RCNN")
-    resnet_50 = ResNet_large(ResidualBlockBottleneck, [3, 4, 6, 3]).to(device)
-    rpn_inst = RegionProposalNetwork(2048, feat_stride=32)
-
-    net = FasterRCNN(resnet_50, rpn_inst)
-    net = net.to(device)
-
-    logging.info("    2. Load coco train2017")
-    #transform_train = transforms.Compose([transforms.ToTensor()])
-    transform_train = transforms.Compose([transforms.ToTensor(),
-                                          transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])])
-    coco_train = CocoDetection("/home/hhwu/datasets/coco/train2017", "/home/hhwu/datasets/coco/annotations/instances_train2017.json", transform=transform_train, target_transform=None)
-    dataloader = DataLoader(coco_train, batch_size=1, shuffle=True, num_workers=0)
-
-
-    rpn_cls_criterion = nn.CrossEntropyLoss(ignore_index=-1)
-    #rpn_loc_criterion = nn.SmoothL1Loss()
-    #rpn_loc_criterion = nn.L1Loss()
-    rpn_loc_criterion = nn.L1Loss(reduction='none')
-
-
-    # lr=0.002 no convergence ~ 30K overfitting?
-    # lr=0.01 no convergence for fg/bg overfitting?
-    optimizer = optim.SGD(net.parameters(), lr=0.01, momentum=0.9, weight_decay=5e-4)
+def trainOneEpoch(dataloader, net, optimizer, rpn_cls_criterion, rpn_loc_criterion, epoch):
     train_loss = 0
     cls_loss = 0
     reg_loss = 0
@@ -390,11 +366,15 @@ def train():
             raw_fg_cls_label = torch.from_numpy(np.array(raw_fg_cls_label)).flatten().to(device)
 
             rpn_loc_loss = rpn_loc_criterion(loc_output.float(), reg_label.float())
-            rpn_loc_loss[raw_fg_cls_label==0].zero_()
-            rpn_loc_loss[raw_fg_cls_label==-1].zero_()
+            rpn_loc_loss_1         = rpn_loc_loss[raw_fg_cls_label == 1]
+            rpn_loc_loss_0         = rpn_loc_loss[raw_fg_cls_label == 0].zero_()
+            rpn_loc_loss_dont_care = rpn_loc_loss[raw_fg_cls_label == -1].zero_()
             #logging.info(f"debug raw_fg_cls_label: {torch.count_nonzero(raw_fg_cls_label)}")
-            #print("debug: ", rpn_loc_loss[raw_fg_cls_label==1].zero_().shape)
-            rpn_loc_loss = torch.mean(rpn_loc_loss)
+            #print("debug: ", rpn_loc_loss.shape)
+            logging.debug("loss_1: ", torch.mean(rpn_loc_loss_1).item())
+            logging.debug("loss_0: ", torch.mean(rpn_loc_loss_0).item())
+            logging.debug("loss_dont_care: ", torch.mean(rpn_loc_loss_dont_care).item())
+            rpn_loc_loss = torch.mean(rpn_loc_loss_1) + torch.mean(rpn_loc_loss_0) + torch.mean(rpn_loc_loss_dont_care)
             #rpn_loc_loss = rpn_loc_criterion(loc_output[raw_fg_cls_label==1].float(),reg_label[raw_fg_cls_label==1].float())
 
             #################
@@ -431,9 +411,9 @@ def train():
             avg = train_loss/num_batch
             avg_cls = cls_loss/num_batch
             avg_reg = reg_loss/num_batch
-            logging.info("------------ Batch Training Result ----------------")
+            logging.info(f"------------ Batch Training Result (Epoch {epoch})----------------")
             logging.info(f"    {batch_idx}. Ave. train loss: {avg}    average cls loss: {avg_cls}               average reg loss: {avg_reg}")
-            logging.info(f"                                                current cls loss: {fg_cls_loss.item()}    current reg loss: {rpn_loc_loss.item()}")
+            logging.info(f"                                              current cls loss: {fg_cls_loss.item()}               current reg loss: {rpn_loc_loss.item()}")
             logging.info(f"    Total: {total} correct: {correct}   Accu. : {correct/total}")
             logging.info("---------------------------------------------------")
 
@@ -466,11 +446,40 @@ def train():
             torch.save( net.state_dict(), os.path.join( "./savedModels/",'fasterRCNN_itr_'+str(batch_idx)+'.pth') )
 
 
+
+
+def train():
+    logging.info("    1. Construct Faster-RCNN")
+    resnet_50 = ResNet_large(ResidualBlockBottleneck, [3, 4, 6, 3]).to(device)
+    rpn_inst = RegionProposalNetwork(2048, feat_stride=32)
+
+    net = FasterRCNN(resnet_50, rpn_inst)
+    net = net.to(device)
+
+    logging.info("    2. Load coco train2017")
+    #transform_train = transforms.Compose([transforms.ToTensor()])
+    transform_train = transforms.Compose([transforms.ToTensor(),
+                                          transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])])
+    coco_train = CocoDetection("/home/hhwu/datasets/coco/train2017", "/home/hhwu/datasets/coco/annotations/instances_train2017.json", transform=transform_train, target_transform=None)
+    dataloader = DataLoader(coco_train, batch_size=1, shuffle=True, num_workers=0)
+
+
+    rpn_cls_criterion = nn.CrossEntropyLoss(ignore_index=-1)
+    #rpn_loc_criterion = nn.SmoothL1Loss()
+    #rpn_loc_criterion = nn.L1Loss()
+    rpn_loc_criterion = nn.L1Loss(reduction='none')
+
+
+    # lr=0.002 no convergence ~ 30K overfitting?
+    # lr=0.01 no convergence for fg/bg overfitting?
+    optimizer = optim.SGD(net.parameters(), lr=0.01, momentum=0.9, weight_decay=5e-4)
+
     #summary(resnet_50)
     #model = torchvision.models.resnet50()
     #summary(model)
 
-    print("-----------------------------")
+    for epoch in range(1,5):
+        trainOneEpoch(dataloader, net, optimizer, rpn_cls_criterion, rpn_loc_criterion, epoch)
 
 
 
