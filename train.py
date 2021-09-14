@@ -369,12 +369,17 @@ def trainOneEpoch(dataloader, net, optimizer, rpn_cls_criterion, rpn_loc_criteri
             rpn_loc_loss_1         = rpn_loc_loss[raw_fg_cls_label == 1]
             rpn_loc_loss_0         = rpn_loc_loss[raw_fg_cls_label == 0].zero_()
             rpn_loc_loss_dont_care = rpn_loc_loss[raw_fg_cls_label == -1].zero_()
+            rpn_loc_loss_1.retain_grad()
+            #rpn_loc_loss_0.retain_grad()
+            #rpn_loc_loss_dont_care.retain_grad()
             #logging.info(f"debug raw_fg_cls_label: {torch.count_nonzero(raw_fg_cls_label)}")
             #print("debug: ", rpn_loc_loss.shape)
             logging.debug("loss_1: ", torch.mean(rpn_loc_loss_1).item())
             logging.debug("loss_0: ", torch.mean(rpn_loc_loss_0).item())
             logging.debug("loss_dont_care: ", torch.mean(rpn_loc_loss_dont_care).item())
-            rpn_loc_loss = torch.mean(rpn_loc_loss_1) + torch.mean(rpn_loc_loss_0) + torch.mean(rpn_loc_loss_dont_care)
+            #rpn_loc_loss = torch.mean(rpn_loc_loss_1) + torch.mean(rpn_loc_loss_0) + torch.mean(rpn_loc_loss_dont_care)
+            rpn_loc_loss = torch.mean(rpn_loc_loss_1)
+            rpn_loc_loss.retain_grad()
             #rpn_loc_loss = rpn_loc_criterion(loc_output[raw_fg_cls_label==1].float(),reg_label[raw_fg_cls_label==1].float())
 
             #################
@@ -386,11 +391,15 @@ def trainOneEpoch(dataloader, net, optimizer, rpn_cls_criterion, rpn_loc_criteri
 
 
 
-
             total_loss = (fg_cls_loss + rpn_loc_loss)
 
             total_loss.backward()
+            #print(f"debug rpn_loc_loss_1: {rpn_loc_loss_1.grad}")
+            #print(f"debug rpn_loc_loss_0: {rpn_loc_loss_0.grad}")
+            #print(f"debug rpn_loc_loss_dont_care: {rpn_loc_loss_dont_care.grad}")
+            #print(f"debug rpn_loc_loss: {rpn_loc_loss.grad}")
             optimizer.step()
+           
 
             train_loss += total_loss.item()
             cls_loss += fg_cls_loss.item()
