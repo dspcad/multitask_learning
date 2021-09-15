@@ -8,6 +8,9 @@ from torch.utils.data import DataLoader
 import torchvision.transforms as transforms
 import torch.optim as optim
 
+from torch.utils.tensorboard import SummaryWriter
+writer = SummaryWriter()
+
 from resnet import *
 from rpn import *
 from faster_rcnn import FasterRCNN
@@ -200,7 +203,7 @@ def label_assignment(anchor, target, img, scale_x, scale_y):
         #foreground: IoU > 0.7 with any gt box
         max_v = np.max(tbl[i])
         if max_v > 0:
-            fg_cls_label[np.logical_or(tbl[i]>0.5, tbl[i] == max_v)] = 1
+            fg_cls_label[np.logical_or(tbl[i]>0.6, tbl[i] == max_v)] = 1
 
         #for j in range(0,num_anchor):
         #    if tbl[i][j] == max_v or tbl[i][j]>0.7:
@@ -413,6 +416,7 @@ def trainOneEpoch(dataloader, net, optimizer, rpn_cls_criterion, rpn_loc_criteri
             cls_loss += fg_cls_loss.item()
             reg_loss += rpn_loc_loss.item()
 
+
             total = 0
 
             # max value, index
@@ -433,6 +437,10 @@ def trainOneEpoch(dataloader, net, optimizer, rpn_cls_criterion, rpn_loc_criteri
             logging.info(f"                                              current cls loss: {fg_cls_loss.item()}               current reg loss: {rpn_loc_loss.item()}")
             logging.info(f"    Total: {total} correct: {correct}   Accu. : {correct/total}")
             logging.info("---------------------------------------------------")
+
+            writer.add_scalar("Loss/train", avg, batch_idx)
+            writer.add_scalar("Loss/train_rpn_cls", fg_cls_loss, batch_idx)
+            writer.add_scalar("Loss/train_rpn_loc", rpn_loc_loss, batch_idx)
 
             #####################
             #    reset batch    #
@@ -489,7 +497,7 @@ def train():
 
     # lr=0.002 no convergence ~ 30K overfitting?
     # lr=0.01 no convergence for fg/bg overfitting?
-    optimizer = optim.SGD(net.parameters(), lr=0.01, momentum=0.9, weight_decay=5e-4)
+    optimizer = optim.SGD(net.parameters(), lr=0.02, momentum=0.9, weight_decay=5e-4)
 
     #summary(resnet_50)
     #model = torchvision.models.resnet50()
@@ -498,6 +506,7 @@ def train():
     for epoch in range(1,5):
         trainOneEpoch(dataloader, net, optimizer, rpn_cls_criterion, rpn_loc_criterion, epoch)
 
+    writer.flush()
 
 
 if __name__ == '__main__':
