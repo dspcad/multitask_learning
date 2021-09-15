@@ -187,7 +187,7 @@ def label_assignment(anchor, target, img, scale_x, scale_y):
                 #tx
                 reg_label[j][0] = (x-xa)/wa
                 #ty
-                reg_label[j][1] = (y-ya)/wa
+                reg_label[j][1] = (y-ya)/ha
                 #tw
                 reg_label[j][2] = np.log(w/wa)
                 #th
@@ -203,7 +203,7 @@ def label_assignment(anchor, target, img, scale_x, scale_y):
         #foreground: IoU > 0.7 with any gt box
         max_v = np.max(tbl[i])
         if max_v > 0:
-            fg_cls_label[np.logical_or(tbl[i]>0.6, tbl[i] == max_v)] = 1
+            fg_cls_label[np.logical_or(tbl[i]>0.7, tbl[i] == max_v)] = 1
 
         #for j in range(0,num_anchor):
         #    if tbl[i][j] == max_v or tbl[i][j]>0.7:
@@ -497,7 +497,7 @@ def train():
 
     # lr=0.002 no convergence ~ 30K overfitting?
     # lr=0.01 no convergence for fg/bg overfitting?
-    optimizer = optim.SGD(net.parameters(), lr=0.02, momentum=0.9, weight_decay=5e-4)
+    optimizer = optim.SGD(net.parameters(), lr=0.01, momentum=0.9, weight_decay=1e-4)
 
     #summary(resnet_50)
     #model = torchvision.models.resnet50()
