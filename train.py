@@ -492,12 +492,13 @@ def train():
     rpn_cls_criterion = nn.CrossEntropyLoss(ignore_index=-1)
     #rpn_loc_criterion = nn.SmoothL1Loss()
     #rpn_loc_criterion = nn.L1Loss()
-    rpn_loc_criterion = nn.L1Loss(reduction='none')
+    #rpn_loc_criterion = nn.L1Loss(reduction='none')
+    rpn_loc_criterion = nn.SmoothL1Loss(reduction='none')
 
 
     # lr=0.002 no convergence ~ 30K overfitting?
     # lr=0.01 no convergence for fg/bg overfitting?
-    optimizer = optim.SGD(net.parameters(), lr=0.01, momentum=0.9, weight_decay=1e-4)
+    optimizer = optim.SGD(net.parameters(), lr=0.001, momentum=0.9, weight_decay=1e-4)
 
     #summary(resnet_50)
     #model = torchvision.models.resnet50()
