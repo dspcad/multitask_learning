@@ -144,14 +144,14 @@ def gen_mini_batch(fg_cls_label,batch_size=128):
 
 
 
-def label_assignment(anchor, target, img, scale_x, scale_y):
+def label_assignment(anchor, target, img, scale_x, scale_y, index_inside):
     # img is pytorch tensor
     # batch, channel, height, width
     _, height, width = img.shape
     gt_bbox   = len(target)
     num_anchor = anchor.shape[0]
     tbl = np.zeros((gt_bbox,num_anchor))
-    logging.info(f"# of gt bboxes: {gt_bbox}   # of anchors: {num_anchor}")
+    logging.info(f"# of gt bboxes: {gt_bbox}   # of anchors: {num_anchor}   # of valid anchors: {len(index_inside)}")
 
     fg_cls_label = np.full(num_anchor,-1)
     reg_label = np.zeros((num_anchor,4))
@@ -174,7 +174,8 @@ def label_assignment(anchor, target, img, scale_x, scale_y):
         #cate_id = int(obj['category_id'].numpy())
         #logging.info("    {}     {} {} {} {}".format(categories[cate_id], x1, y1, x2, y2))
         #cv2.putText(img, "{}".format(categories[cate_id]), (x1, y1 - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0,255,0), 1)
-        for j in range(0,num_anchor):
+        #for j in range(0,num_anchor):
+        for j in index_inside:
             wa = anchor[j][2]-anchor[j][0]
             ha = anchor[j][3]-anchor[j][1]
             xa = anchor[j][0]+wa/2
@@ -313,7 +314,7 @@ def check_bbox(targets, img, num):
         #logging.info("    {}     {} {} {} {}".format(categories[cate_id], x1, y1, x2, y2))
 
 
-def trainOneEpoch(dataloader, net, optimizer, rpn_cls_criterion, rpn_loc_criterion, epoch):
+def trainOneEpoch(dataloader, net, optimizer, rpn_cls_criterion, rpn_loc_criterion, epoch, index_inside):
     train_loss = 0
     cls_loss = 0
     reg_loss = 0
@@ -322,6 +323,7 @@ def trainOneEpoch(dataloader, net, optimizer, rpn_cls_criterion, rpn_loc_criteri
     scale_x = []
     scale_y = []
     targets = []
+
 
     for batch_idx, (img, target) in enumerate(dataloader):
         if batch_idx > 0 and batch_idx % batch_size==0:
@@ -346,7 +348,7 @@ def trainOneEpoch(dataloader, net, optimizer, rpn_cls_criterion, rpn_loc_criteri
             fg_cls_label     = []
             reg_label        = []
             for i in range(0,batch_size):
-                raw_fg_cls_label_1_img, fg_cls_label_1_img, reg_label_1_img = label_assignment(anchor, targets[i], batch_imgs[i], scale_x[i], scale_y[i])
+                raw_fg_cls_label_1_img, fg_cls_label_1_img, reg_label_1_img = label_assignment(anchor, targets[i], batch_imgs[i], scale_x[i], scale_y[i], index_inside)
                 raw_fg_cls_label.append(raw_fg_cls_label_1_img)
                 fg_cls_label.append(fg_cls_label_1_img)
                 reg_label.append(reg_label_1_img)
@@ -481,6 +483,10 @@ def train():
     net = FasterRCNN(resnet_50, rpn_inst)
     net = net.to(device)
 
+    raw_anchor = net._generated_all_anchor(800,600)
+    index_inside = np.where((raw_anchor[:, 0] >= 0) & (raw_anchor[:, 1] >= 0) & (raw_anchor[:, 2] <= 800) & (raw_anchor[:, 3] <= 800))[0]
+
+
     logging.info("    2. Load coco train2017")
     #transform_train = transforms.Compose([transforms.ToTensor()])
     transform_train = transforms.Compose([transforms.ToTensor(),
@@ -505,7 +511,7 @@ def train():
     #summary(model)
 
     for epoch in range(1,5):
-        trainOneEpoch(dataloader, net, optimizer, rpn_cls_criterion, rpn_loc_criterion, epoch)
+        trainOneEpoch(dataloader, net, optimizer, rpn_cls_criterion, rpn_loc_criterion, epoch, index_inside)
 
     writer.flush()
 
