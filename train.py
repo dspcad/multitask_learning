@@ -231,7 +231,8 @@ def label_assignment(anchor, target, img, scale_x, scale_y, index_inside):
 
     else:
         #background: IoU < 0.3 for all gt boxes
-        for j in range(0,num_anchor):
+        #for j in range(0,num_anchor):
+        for j in index_inside:
             #idx = np.argmax(tbl[:,j])
             max_v = np.max(tbl[:,j])
             #if tbl[idx][j] < 0.1 and fg_cls_label[j] != 1:
@@ -483,7 +484,7 @@ def train():
     net = FasterRCNN(resnet_50, rpn_inst)
     net = net.to(device)
 
-    raw_anchor = net._generated_all_anchor(800,600)
+    raw_anchor = net._generated_all_anchor(800,800)
     index_inside = np.where((raw_anchor[:, 0] >= 0) & (raw_anchor[:, 1] >= 0) & (raw_anchor[:, 2] <= 800) & (raw_anchor[:, 3] <= 800))[0]
 
 
@@ -498,13 +499,13 @@ def train():
     rpn_cls_criterion = nn.CrossEntropyLoss(ignore_index=-1)
     #rpn_loc_criterion = nn.SmoothL1Loss()
     #rpn_loc_criterion = nn.L1Loss()
-    #rpn_loc_criterion = nn.L1Loss(reduction='none')
-    rpn_loc_criterion = nn.SmoothL1Loss(reduction='none')
+    rpn_loc_criterion = nn.L1Loss(reduction='none')
+    #rpn_loc_criterion = nn.SmoothL1Loss(reduction='none')
 
 
     # lr=0.002 no convergence ~ 30K overfitting?
     # lr=0.01 no convergence for fg/bg overfitting?
-    optimizer = optim.SGD(net.parameters(), lr=0.001, momentum=0.9, weight_decay=1e-4)
+    optimizer = optim.SGD(net.parameters(), lr=0.01, momentum=0.9, weight_decay=1e-4)
 
     #summary(resnet_50)
     #model = torchvision.models.resnet50()
