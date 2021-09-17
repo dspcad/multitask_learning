@@ -7,6 +7,7 @@ from torchvision.datasets.coco import CocoDetection
 from torch.utils.data import DataLoader
 import torchvision.transforms as transforms
 import torch.optim as optim
+import torch.optim.lr_scheduler as lr_scheduler
 
 from torch.utils.tensorboard import SummaryWriter
 writer = SummaryWriter()
@@ -438,7 +439,7 @@ def trainOneEpoch(dataloader, net, optimizer, rpn_cls_criterion, rpn_loc_criteri
             logging.info(f"------------ Batch Training Result (Epoch {epoch})----------------")
             logging.info(f"    {batch_idx}. Ave. train loss: {avg}    average cls loss: {avg_cls}               average reg loss: {avg_reg}")
             logging.info(f"                                              current cls loss: {fg_cls_loss.item()}               current reg loss: {rpn_loc_loss.item()}")
-            logging.info(f"    Total: {total} correct: {correct}   Accu. : {correct/total}")
+            logging.info(f"    Total: {total} correct: {correct}   Accu. : {correct/total}  (learning rate: {optimizer.param_groups[0]['lr']})")
             logging.info("---------------------------------------------------")
 
             writer.add_scalar("Loss/train", avg, batch_idx)
@@ -506,6 +507,7 @@ def train():
     # lr=0.002 no convergence ~ 30K overfitting?
     # lr=0.01 no convergence for fg/bg overfitting?
     optimizer = optim.SGD(net.parameters(), lr=0.003, momentum=0.9, weight_decay=1e-4)
+    scheduler = lr_scheduler.MultiStepLR(optimizer, milestones=[1,2], gamma=0.1)
 
     #summary(resnet_50)
     #model = torchvision.models.resnet50()
@@ -513,6 +515,7 @@ def train():
 
     for epoch in range(1,5):
         trainOneEpoch(dataloader, net, optimizer, rpn_cls_criterion, rpn_loc_criterion, epoch, index_inside)
+        scheduler.step()
 
     writer.flush()
 
