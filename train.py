@@ -235,9 +235,9 @@ def label_assignment(anchor, target, img, scale_x, scale_y, index_inside):
         for j in index_inside:
             #idx = np.argmax(tbl[:,j])
             max_v = np.max(tbl[:,j])
-            #if tbl[idx][j] < 0.1 and fg_cls_label[j] != 1:
+            if max_v < 0.3 and fg_cls_label[j] != 1:
             #if tbl[idx][j] == 0:
-            if max_v == 0:
+            #if max_v == 0:
                 fg_cls_label[j] = 0
 
     end = time.time()
@@ -505,7 +505,7 @@ def train():
 
     # lr=0.002 no convergence ~ 30K overfitting?
     # lr=0.01 no convergence for fg/bg overfitting?
-    optimizer = optim.SGD(net.parameters(), lr=0.01, momentum=0.9, weight_decay=1e-4)
+    optimizer = optim.SGD(net.parameters(), lr=0.003, momentum=0.9, weight_decay=1e-4)
 
     #summary(resnet_50)
     #model = torchvision.models.resnet50()
