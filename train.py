@@ -41,6 +41,19 @@ def loadLabels():
         logging.info("COCO Dataset classes: {}".format(len(categories)))
     print("-----------------------------")
 
+def vecIoU(bbox_g,bbox_a):
+    #print(f"debug: {bbox_g.shape}")
+    #print(f"debug: {bbox_a.shape}")
+    # top left
+    tl = torch.maximum(bbox_g[:, None, :2], bbox_a[:, :2])
+    # bottom right
+    br = torch.minimum(bbox_g[:, None, 2:], bbox_a[:, 2:])
+
+    area_i = torch.prod(br - tl, axis=2) * (tl < br).all(axis=2)
+    area_g = torch.prod(bbox_g[:, 2:] - bbox_g[:, :2], axis=1)
+    area_a = torch.prod(bbox_a[:, 2:] - bbox_a[:, :2], axis=1)
+    return area_i / (area_g[:, None] + area_a - area_i)
+
 
 def IoU(bb1=list(),bb2=list()):
     assert len(bb1) == 4
@@ -142,6 +155,93 @@ def gen_mini_batch(fg_cls_label,batch_size=128):
     logging.info(f"    # of neg: {len(res_idx_0)}")
 
     return fg_cls_label
+
+
+def label_assignment_vec(anchor, target, img, scale_x, scale_y, index_inside):
+    # img is pytorch tensor
+    # batch, channel, height, width
+    _, height, width = img.shape
+    gt_bbox   = len(target)
+    num_anchor = anchor.shape[0]
+    tbl = np.zeros((gt_bbox,num_anchor))
+    logging.info(f"# of gt bboxes: {gt_bbox}   # of anchors: {num_anchor}   # of valid anchors: {len(index_inside)}")
+
+    fg_cls_label = np.full(num_anchor,-1)
+    reg_label = np.zeros((num_anchor,4))
+
+
+
+    start = time.time()
+    if gt_bbox == 0:
+        logging.debug(f"    No gt bbox: {gt_bbox}")
+        fg_cls_label = np.full(num_anchor,0)
+
+    else:
+        # x, y, w, h
+        gt_bbox_xywh = [[target[i]['bbox'][0]*scale_x, target[i]['bbox'][1]*scale_y, target[i]['bbox'][2]*scale_x, target[i]['bbox'][3]*scale_y] for i in range(0,gt_bbox)]
+
+        # x1, y1, x2, 
+        gt_anchor_x1y1x2y2 = torch.tensor([[int(bbox[0]+0.5),int(bbox[1]+0.5),int(bbox[2]+bbox[0]+0.5),int(bbox[3]+bbox[1]+0.5)] for bbox in gt_bbox_xywh if int(bbox[2]+0.5)!=0 and int(bbox[3]+0.5)!=0 ])
+
+        tbl_vec = vecIoU(gt_anchor_x1y1x2y2,anchor)
+
+        for i in range(0,gt_bbox):
+            max_v = torch.max(tbl_vec[i])
+            if max_v > 0:
+                fg_cls_label[torch.logical_or(tbl_vec[i]>0.7, tbl_vec[i] == max_v)] = 1
+
+        #background: IoU < 0.3 for all gt boxes
+        #for j in range(0,num_anchor):
+        for j in index_inside:
+            idx = torch.argmax(tbl_vec[:,j])
+            max_v = tbl_vec[idx][j]
+            #max_v = torch.max(tbl_vec[:,j])
+            if max_v < 0.1 and fg_cls_label[j] != 1:
+            #if tbl[idx][j] == 0:
+            #if max_v == 0:
+                fg_cls_label[j] = 0
+
+
+    
+            #tbl[i][j] = IoU([x1,y1,x2,y2], anchor[j]) if abs(xa-x)*2< (w+wa) and abs(ya-y)*2 < (h+ha) else 0
+            wa = anchor[j][2]-anchor[j][0]
+            ha = anchor[j][3]-anchor[j][1]
+            xa = anchor[j][0]+wa/2
+            ya = anchor[j][1]+ha/2
+
+            x, y, w, h = gt_bbox_xywh[idx]
+            if abs(xa-x)*2< (w+wa) and abs(ya-y)*2 < (h+ha):
+    
+                #tx
+                reg_label[j][0] = (x-xa)/wa
+                #ty
+                reg_label[j][1] = (y-ya)/ha
+                #tw
+                reg_label[j][2] = np.log(w/wa)
+                #th
+                reg_label[j][3] = np.log(h/ha)
+
+
+
+
+    end = time.time()
+    print(f"debug: vec {tbl_vec.shape} runtime {end-start}")
+
+
+    raw_fg_cls_label = np.copy(fg_cls_label)
+    #print(f"   raw pos: {np.count_nonzero(raw_fg_cls_label)}")
+    #print(f"       pos: {np.count_nonzero(fg_cls_label)}")
+
+    fg_cls_label = gen_mini_batch(fg_cls_label,256)
+    logging.info(f"# of fg anchors: {np.count_nonzero(fg_cls_label == 1)}")
+    logging.info(f"# of bg anchors: {np.count_nonzero(fg_cls_label == 0)}")
+    logging.info(f"# of dont care anchors: {np.count_nonzero(fg_cls_label == -1)}")
+
+
+    fg_cls_label = torch.from_numpy(fg_cls_label).to(device)
+    reg_label = torch.from_numpy(reg_label).to(device)
+
+    return raw_fg_cls_label, fg_cls_label, reg_label
 
 
 
@@ -350,7 +450,7 @@ def trainOneEpoch(dataloader, net, optimizer, rpn_cls_criterion, rpn_loc_criteri
             fg_cls_label     = []
             reg_label        = []
             for i in range(0,batch_size):
-                raw_fg_cls_label_1_img, fg_cls_label_1_img, reg_label_1_img = label_assignment(anchor, targets[i], batch_imgs[i], scale_x[i], scale_y[i], index_inside)
+                raw_fg_cls_label_1_img, fg_cls_label_1_img, reg_label_1_img = label_assignment_vec(anchor, targets[i], batch_imgs[i], scale_x[i], scale_y[i], index_inside)
                 raw_fg_cls_label.append(raw_fg_cls_label_1_img)
                 fg_cls_label.append(fg_cls_label_1_img)
                 reg_label.append(reg_label_1_img)
