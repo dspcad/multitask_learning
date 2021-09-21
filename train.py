@@ -41,7 +41,7 @@ def loadLabels():
         logging.info("COCO Dataset classes: {}".format(len(categories)))
     print("-----------------------------")
 
-def vecIoU(bbox_g,bbox_a):
+def IoU_vec(bbox_g,bbox_a):
     #print(f"debug: {bbox_g.shape}")
     #print(f"debug: {bbox_a.shape}")
     # top left
@@ -171,19 +171,21 @@ def label_assignment_vec(anchor, target, img, scale_x, scale_y, index_inside):
 
 
 
-    start = time.time()
     if gt_bbox == 0:
         logging.debug(f"    No gt bbox: {gt_bbox}")
         fg_cls_label = np.full(num_anchor,0)
 
     else:
+        start = time.time()
         # x, y, w, h
         gt_bbox_xywh = [[target[i]['bbox'][0]*scale_x, target[i]['bbox'][1]*scale_y, target[i]['bbox'][2]*scale_x, target[i]['bbox'][3]*scale_y] for i in range(0,gt_bbox)]
 
-        # x1, y1, x2, 
+        # x1, y1, x2, y2
         gt_anchor_x1y1x2y2 = torch.tensor([[int(bbox[0]+0.5),int(bbox[1]+0.5),int(bbox[2]+bbox[0]+0.5),int(bbox[3]+bbox[1]+0.5)] for bbox in gt_bbox_xywh if int(bbox[2]+0.5)!=0 and int(bbox[3]+0.5)!=0 ])
+        gt_bbox = len(gt_anchor_x1y1x2y2)
+        logging.info(f"Corrected # of gt bboxes: {gt_bbox}")
 
-        tbl_vec = vecIoU(gt_anchor_x1y1x2y2,anchor)
+        tbl_vec = IoU_vec(gt_anchor_x1y1x2y2,anchor)
 
         for i in range(0,gt_bbox):
             max_v = torch.max(tbl_vec[i])
@@ -224,8 +226,8 @@ def label_assignment_vec(anchor, target, img, scale_x, scale_y, index_inside):
 
 
 
-    end = time.time()
-    print(f"debug: vec {tbl_vec.shape} runtime {end-start}")
+        end = time.time()
+        print(f"debug: vec {tbl_vec.shape} runtime {end-start}")
 
 
     raw_fg_cls_label = np.copy(fg_cls_label)
