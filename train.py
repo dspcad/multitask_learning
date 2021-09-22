@@ -127,10 +127,10 @@ def gen_mini_batch(fg_cls_label,batch_size=128):
     res_idx_0 = np.array(np.where(fg_cls_label == 0)).flatten()
     res_idx_1 = np.array(np.where(fg_cls_label == 1)).flatten()
 
-    logging.info("Generate mini batch: ")
-    logging.info("    Before: ")
-    logging.info(f"    # of pos: {len(res_idx_1)}")
-    logging.info(f"    # of neg: {len(res_idx_0)}")
+    #logging.info("Generate mini batch: ")
+    #logging.info("    Before: ")
+    #logging.info(f"    # of pos: {len(res_idx_1)}")
+    #logging.info(f"    # of neg: {len(res_idx_0)}")
 
 
     batch_size = min(len(res_idx_0),len(res_idx_1))
@@ -150,9 +150,9 @@ def gen_mini_batch(fg_cls_label,batch_size=128):
     res_idx_0 = np.array(np.where(fg_cls_label == 0)).flatten()
     res_idx_1 = np.array(np.where(fg_cls_label == 1)).flatten()
 
-    logging.info("    After: ")
-    logging.info(f"    # of pos: {len(res_idx_1)}")
-    logging.info(f"    # of neg: {len(res_idx_0)}")
+    #logging.info("    After: ")
+    #logging.info(f"    # of pos: {len(res_idx_1)}")
+    #logging.info(f"    # of neg: {len(res_idx_0)}")
 
     return fg_cls_label
 
@@ -164,7 +164,7 @@ def label_assignment_vec(anchor, target, img, scale_x, scale_y, index_inside):
     gt_bbox   = len(target)
     num_anchor = anchor.shape[0]
     tbl = np.zeros((gt_bbox,num_anchor))
-    logging.info(f"# of gt bboxes: {gt_bbox}   # of anchors: {num_anchor}   # of valid anchors: {len(index_inside)}")
+    #logging.info(f"# of gt bboxes: {gt_bbox}   # of anchors: {num_anchor}   # of valid anchors: {len(index_inside)}")
 
     fg_cls_label = np.full(num_anchor,-1)
     reg_label = np.zeros((num_anchor,4))
@@ -183,7 +183,7 @@ def label_assignment_vec(anchor, target, img, scale_x, scale_y, index_inside):
         # x1, y1, x2, y2
         gt_anchor_x1y1x2y2 = torch.tensor([[int(bbox[0]+0.5),int(bbox[1]+0.5),int(bbox[2]+bbox[0]+0.5),int(bbox[3]+bbox[1]+0.5)] for bbox in gt_bbox_xywh])
         gt_bbox = len(gt_anchor_x1y1x2y2)
-        logging.info(f"Corrected # of gt bboxes: {gt_bbox}")
+        #logging.info(f"Corrected # of gt bboxes: {gt_bbox}")
 
         tbl_vec = IoU_vec(gt_anchor_x1y1x2y2,anchor)
 
@@ -247,7 +247,7 @@ def label_assignment_vec(anchor, target, img, scale_x, scale_y, index_inside):
 
 
         end = time.time()
-        print(f"debug: vec {tbl_vec.shape} runtime {end-start}")
+        #print(f"debug: vec {tbl_vec.shape} runtime {end-start}")
 
 
     raw_fg_cls_label = np.copy(fg_cls_label)
@@ -255,9 +255,9 @@ def label_assignment_vec(anchor, target, img, scale_x, scale_y, index_inside):
     #print(f"       pos: {np.count_nonzero(fg_cls_label)}")
 
     fg_cls_label = gen_mini_batch(fg_cls_label,256)
-    logging.info(f"# of fg anchors: {np.count_nonzero(fg_cls_label == 1)}")
-    logging.info(f"# of bg anchors: {np.count_nonzero(fg_cls_label == 0)}")
-    logging.info(f"# of dont care anchors: {np.count_nonzero(fg_cls_label == -1)}")
+    #logging.info(f"# of fg anchors: {np.count_nonzero(fg_cls_label == 1)}")
+    #logging.info(f"# of bg anchors: {np.count_nonzero(fg_cls_label == 0)}")
+    #logging.info(f"# of dont care anchors: {np.count_nonzero(fg_cls_label == -1)}")
 
 
     fg_cls_label = torch.from_numpy(fg_cls_label).to(device)
@@ -274,7 +274,7 @@ def label_assignment(anchor, target, img, scale_x, scale_y, index_inside):
     gt_bbox   = len(target)
     num_anchor = anchor.shape[0]
     tbl = np.zeros((gt_bbox,num_anchor))
-    logging.info(f"# of gt bboxes: {gt_bbox}   # of anchors: {num_anchor}   # of valid anchors: {len(index_inside)}")
+    #logging.info(f"# of gt bboxes: {gt_bbox}   # of anchors: {num_anchor}   # of valid anchors: {len(index_inside)}")
 
     fg_cls_label = np.full(num_anchor,-1)
     reg_label = np.zeros((num_anchor,4))
@@ -344,7 +344,7 @@ def label_assignment(anchor, target, img, scale_x, scale_y, index_inside):
 
 
     end = time.time()
-    logging.info(f"    FG selection runtime {end-start}")
+    #logging.info(f"    FG selection runtime {end-start}")
 
 
     start = time.time()
@@ -371,9 +371,9 @@ def label_assignment(anchor, target, img, scale_x, scale_y, index_inside):
     #print(f"       pos: {np.count_nonzero(fg_cls_label)}")
 
     fg_cls_label = gen_mini_batch(fg_cls_label,256)
-    logging.info(f"# of fg anchors: {np.count_nonzero(fg_cls_label == 1)}")
-    logging.info(f"# of bg anchors: {np.count_nonzero(fg_cls_label == 0)}")
-    logging.info(f"# of dont care anchors: {np.count_nonzero(fg_cls_label == -1)}")
+    #logging.info(f"# of fg anchors: {np.count_nonzero(fg_cls_label == 1)}")
+    #logging.info(f"# of bg anchors: {np.count_nonzero(fg_cls_label == 0)}")
+    #logging.info(f"# of dont care anchors: {np.count_nonzero(fg_cls_label == -1)}")
 
 
     fg_cls_label = torch.from_numpy(fg_cls_label).to(device)
@@ -438,11 +438,131 @@ def check_bbox(targets, img, num):
         #logging.info("    {}     {} {} {} {}".format(categories[cate_id], x1, y1, x2, y2))
 
 
+def trainOneBatch(net, optimizer, rpn_cls_criterion, rpn_loc_criterion, epoch, targets, batch_imgs, scale_x, scale_y, index_inside, train_loss, cls_loss, reg_loss, batch_idx):
+    ################################################
+    #   feed mini batch of images to Faster-RCNN   #
+    ################################################
+    optimizer.zero_grad()
+    batch_imgs = torch.stack(batch_imgs).to(device)
+    logging.debug(f"debug batch_imgs: {batch_imgs.shape}")
+    loc_output, cls_output, anchor = net(batch_imgs)
+
+    cls_output = cls_output.permute(0, 2, 3, 1).contiguous().view(-1,2)
+    loc_output = loc_output.permute(0, 2, 3, 1).contiguous().view(-1,4)
+    logging.debug(f"debug cls_output: {cls_output.shape}")
+    logging.debug(f"debug loc_output: {loc_output.shape}")
+
+    #########################################################
+    #   Generate the labels for RPN cls loss and loc loss   #
+    #########################################################
+    raw_fg_cls_label = []
+    fg_cls_label     = []
+    reg_label        = []
+    for i in range(0,len(batch_imgs)):
+        raw_fg_cls_label_1_img, fg_cls_label_1_img, reg_label_1_img = label_assignment_vec(anchor, targets[i], batch_imgs[i], scale_x[i], scale_y[i], index_inside)
+        raw_fg_cls_label.append(raw_fg_cls_label_1_img)
+        fg_cls_label.append(fg_cls_label_1_img)
+        reg_label.append(reg_label_1_img)
+
+
+    #mask = []
+    #for i, raw_fg_cls_label_1_img in enumerate(raw_fg_cls_label):
+    #    mask_1_img = [[1,1,1,1] if raw_fg_cls_label_1_img[idx] == 1 else [0,0,0,0] for idx in range(0,anchor.shape[0])]
+    #    mask.append(mask_1_img)
+
+
+    #########################################################
+    #    loc loss:  Mask the gradient computations of neg   #
+    #########################################################
+    #mask = torch.Tensor(mask).to(device)
+    #mask = np.array(mask)
+    #mask = torch.from_numpy(mask).view(-1,4).to(device)
+    #loc_output.register_hook(lambda grad: grad * mask.float())
+    reg_label = torch.stack(reg_label).contiguous().view(-1,4).to(device)
+    raw_fg_cls_label = torch.from_numpy(np.array(raw_fg_cls_label)).flatten().to(device)
+
+    rpn_loc_loss = rpn_loc_criterion(loc_output.float(), reg_label.float())
+    rpn_loc_loss_1         = rpn_loc_loss[raw_fg_cls_label == 1]
+    rpn_loc_loss_0         = rpn_loc_loss[raw_fg_cls_label == 0].zero_()
+    rpn_loc_loss_dont_care = rpn_loc_loss[raw_fg_cls_label == -1].zero_()
+    #rpn_loc_loss_1.retain_grad()
+    #rpn_loc_loss_0.retain_grad()
+    #rpn_loc_loss_dont_care.retain_grad()
+
+    #logging.info(f"debug raw_fg_cls_label: {torch.count_nonzero(raw_fg_cls_label)}")
+    #print("debug: rpn_loc_loss", rpn_loc_loss.grad_fn)
+    #print("debug: rpn_loc_loss_1", rpn_loc_loss_1.grad_fn)
+    #print("debug: rpn_loc_loss_0", rpn_loc_loss_0.grad_fn)
+
+    logging.debug("loss_1: ", torch.mean(rpn_loc_loss_1).item())
+    logging.debug("loss_0: ", torch.mean(rpn_loc_loss_0).item())
+    logging.debug("loss_dont_care: ", torch.mean(rpn_loc_loss_dont_care).item())
+    #rpn_loc_loss = torch.mean(rpn_loc_loss_1) + torch.mean(rpn_loc_loss_0) + torch.mean(rpn_loc_loss_dont_care)
+    #rpn_loc_loss = torch.mean(rpn_loc_loss_1)
+    rpn_loc_loss = rpn_loc_loss_1.mean()
+    #print("debug: rpn_loc_loss", rpn_loc_loss.grad_fn)
+    #rpn_loc_loss.retain_grad()
+    #rpn_loc_loss = rpn_loc_criterion(loc_output[raw_fg_cls_label==1].float(),reg_label[raw_fg_cls_label==1].float())
+
+    #################
+    #    cls loss   #
+    #################
+    #fg_cls_label = torch.stack(fg_cls_label).contiguous().view(-1,1).to(device)
+    fg_cls_label = torch.flatten(torch.stack(fg_cls_label)).to(device)
+    fg_cls_loss  = rpn_cls_criterion(cls_output, fg_cls_label)
+    #print(f"debug fg_cls_loss: {fg_cls_loss.grad_fn}")
+
+
+
+    total_loss = (fg_cls_loss + 2*rpn_loc_loss)
+    #print("debug: totoalloss", total_loss.grad_fn)
+
+    total_loss.backward()
+    #print(f"debug rpn_loc_loss_1: {rpn_loc_loss_1.grad}")
+    #print(f"debug rpn_loc_loss_0: {rpn_loc_loss_0.grad}")
+    #print(f"debug rpn_loc_loss_dont_care: {rpn_loc_loss_dont_care.grad}")
+    #print(f"debug rpn_loc_loss: {rpn_loc_loss.grad}")
+    optimizer.step()
+  
+
+    train_loss += total_loss.item()
+    cls_loss += fg_cls_loss.item()
+    reg_loss += rpn_loc_loss.item()
+
+
+    total = 0
+
+    # max value, index
+    _, predicted = cls_output.max(1)
+    correct = 0
+    for i, label in enumerate(predicted):
+        if fg_cls_label[i]!=-1:
+            total += 1
+        if fg_cls_label[i]==label:
+            correct += 1
+
+    num_batch = batch_idx/len(batch_imgs)
+    avg = train_loss/num_batch
+    avg_cls = cls_loss/num_batch
+    avg_reg = reg_loss/num_batch
+    logging.info(f"------------ Batch Training Result (Epoch {epoch})----------------")
+    logging.info(f"    {batch_idx}. Ave. train loss: {avg}    average cls loss: {avg_cls}               average reg loss: {avg_reg}")
+    logging.info(f"                                              current cls loss: {fg_cls_loss.item()}               current reg loss: {rpn_loc_loss.item()}")
+    logging.info(f"    Total: {total} correct: {correct}   Accu. : {correct/total}  (learning rate: {optimizer.param_groups[0]['lr']})")
+    logging.info("---------------------------------------------------")
+
+    writer.add_scalar("Loss/train", avg, batch_idx)
+    writer.add_scalar("Loss/train_rpn_cls", fg_cls_loss, batch_idx)
+    writer.add_scalar("Loss/train_rpn_loc", rpn_loc_loss, batch_idx)
+
+    return train_loss, cls_loss, reg_loss
+
+
 def trainOneEpoch(dataloader, net, optimizer, rpn_cls_criterion, rpn_loc_criterion, epoch, index_inside):
     train_loss = 0
     cls_loss = 0
     reg_loss = 0
-    batch_size = 8
+    batch_size = 32
     batch_imgs = []
     scale_x = []
     scale_y = []
@@ -451,123 +571,7 @@ def trainOneEpoch(dataloader, net, optimizer, rpn_cls_criterion, rpn_loc_criteri
 
     for batch_idx, (img, target) in enumerate(dataloader):
         if batch_idx > 0 and batch_idx % batch_size==0:
-
-            ################################################
-            #   feed mini batch of images to Faster-RCNN   #
-            ################################################
-            optimizer.zero_grad()
-            batch_imgs = torch.stack(batch_imgs).to(device)
-            logging.debug(f"debug batch_imgs: {batch_imgs.shape}")
-            loc_output, cls_output, anchor = net(batch_imgs)
-
-            cls_output = cls_output.permute(0, 2, 3, 1).contiguous().view(-1,2)
-            loc_output = loc_output.permute(0, 2, 3, 1).contiguous().view(-1,4)
-            logging.debug(f"debug cls_output: {cls_output.shape}")
-            logging.debug(f"debug loc_output: {loc_output.shape}")
-
-            #########################################################
-            #   Generate the labels for RPN cls loss and loc loss   #
-            #########################################################
-            raw_fg_cls_label = []
-            fg_cls_label     = []
-            reg_label        = []
-            for i in range(0,batch_size):
-                raw_fg_cls_label_1_img, fg_cls_label_1_img, reg_label_1_img = label_assignment_vec(anchor, targets[i], batch_imgs[i], scale_x[i], scale_y[i], index_inside)
-                raw_fg_cls_label.append(raw_fg_cls_label_1_img)
-                fg_cls_label.append(fg_cls_label_1_img)
-                reg_label.append(reg_label_1_img)
-
-
-            #mask = []
-            #for i, raw_fg_cls_label_1_img in enumerate(raw_fg_cls_label):
-            #    mask_1_img = [[1,1,1,1] if raw_fg_cls_label_1_img[idx] == 1 else [0,0,0,0] for idx in range(0,anchor.shape[0])]
-            #    mask.append(mask_1_img)
-
-
-            #########################################################
-            #    loc loss:  Mask the gradient computations of neg   #
-            #########################################################
-            #mask = torch.Tensor(mask).to(device)
-            #mask = np.array(mask)
-            #mask = torch.from_numpy(mask).view(-1,4).to(device)
-            #loc_output.register_hook(lambda grad: grad * mask.float())
-            reg_label = torch.stack(reg_label).contiguous().view(-1,4).to(device)
-            raw_fg_cls_label = torch.from_numpy(np.array(raw_fg_cls_label)).flatten().to(device)
-
-            rpn_loc_loss = rpn_loc_criterion(loc_output.float(), reg_label.float())
-            rpn_loc_loss_1         = rpn_loc_loss[raw_fg_cls_label == 1]
-            rpn_loc_loss_0         = rpn_loc_loss[raw_fg_cls_label == 0].zero_()
-            rpn_loc_loss_dont_care = rpn_loc_loss[raw_fg_cls_label == -1].zero_()
-            #rpn_loc_loss_1.retain_grad()
-            #rpn_loc_loss_0.retain_grad()
-            #rpn_loc_loss_dont_care.retain_grad()
-
-            #logging.info(f"debug raw_fg_cls_label: {torch.count_nonzero(raw_fg_cls_label)}")
-            #print("debug: rpn_loc_loss", rpn_loc_loss.grad_fn)
-            #print("debug: rpn_loc_loss_1", rpn_loc_loss_1.grad_fn)
-            #print("debug: rpn_loc_loss_0", rpn_loc_loss_0.grad_fn)
-
-            logging.debug("loss_1: ", torch.mean(rpn_loc_loss_1).item())
-            logging.debug("loss_0: ", torch.mean(rpn_loc_loss_0).item())
-            logging.debug("loss_dont_care: ", torch.mean(rpn_loc_loss_dont_care).item())
-            #rpn_loc_loss = torch.mean(rpn_loc_loss_1) + torch.mean(rpn_loc_loss_0) + torch.mean(rpn_loc_loss_dont_care)
-            #rpn_loc_loss = torch.mean(rpn_loc_loss_1)
-            rpn_loc_loss = rpn_loc_loss_1.mean()
-            #print("debug: rpn_loc_loss", rpn_loc_loss.grad_fn)
-            #rpn_loc_loss.retain_grad()
-            #rpn_loc_loss = rpn_loc_criterion(loc_output[raw_fg_cls_label==1].float(),reg_label[raw_fg_cls_label==1].float())
-
-            #################
-            #    cls loss   #
-            #################
-            #fg_cls_label = torch.stack(fg_cls_label).contiguous().view(-1,1).to(device)
-            fg_cls_label = torch.flatten(torch.stack(fg_cls_label)).to(device)
-            fg_cls_loss  = rpn_cls_criterion(cls_output, fg_cls_label)
-            #print(f"debug fg_cls_loss: {fg_cls_loss.grad_fn}")
-
-
-
-            total_loss = (fg_cls_loss + 2*rpn_loc_loss)
-            #print("debug: totoalloss", total_loss.grad_fn)
-
-            total_loss.backward()
-            #print(f"debug rpn_loc_loss_1: {rpn_loc_loss_1.grad}")
-            #print(f"debug rpn_loc_loss_0: {rpn_loc_loss_0.grad}")
-            #print(f"debug rpn_loc_loss_dont_care: {rpn_loc_loss_dont_care.grad}")
-            #print(f"debug rpn_loc_loss: {rpn_loc_loss.grad}")
-            optimizer.step()
-           
-
-            train_loss += total_loss.item()
-            cls_loss += fg_cls_loss.item()
-            reg_loss += rpn_loc_loss.item()
-
-
-            total = 0
-
-            # max value, index
-            _, predicted = cls_output.max(1)
-            correct = 0
-            for i, label in enumerate(predicted):
-                if fg_cls_label[i]!=-1:
-                    total += 1
-                if fg_cls_label[i]==label:
-                    correct += 1
-
-            num_batch = batch_idx/batch_size
-            avg = train_loss/num_batch
-            avg_cls = cls_loss/num_batch
-            avg_reg = reg_loss/num_batch
-            logging.info(f"------------ Batch Training Result (Epoch {epoch})----------------")
-            logging.info(f"    {batch_idx}. Ave. train loss: {avg}    average cls loss: {avg_cls}               average reg loss: {avg_reg}")
-            logging.info(f"                                              current cls loss: {fg_cls_loss.item()}               current reg loss: {rpn_loc_loss.item()}")
-            logging.info(f"    Total: {total} correct: {correct}   Accu. : {correct/total}  (learning rate: {optimizer.param_groups[0]['lr']})")
-            logging.info("---------------------------------------------------")
-
-            writer.add_scalar("Loss/train", avg, batch_idx)
-            writer.add_scalar("Loss/train_rpn_cls", fg_cls_loss, batch_idx)
-            writer.add_scalar("Loss/train_rpn_loc", rpn_loc_loss, batch_idx)
-
+            train_loss, cls_loss, reg_loss = trainOneBatch(net, optimizer, rpn_cls_criterion, rpn_loc_criterion, epoch, targets, batch_imgs, scale_x, scale_y, index_inside, train_loss, cls_loss, reg_loss, batch_idx)
             #####################
             #    reset batch    #
             #####################
@@ -575,8 +579,6 @@ def trainOneEpoch(dataloader, net, optimizer, rpn_cls_criterion, rpn_loc_criteri
             scale_x = []
             scale_y = []
             targets = []
-
-
 
 
 
@@ -597,6 +599,8 @@ def trainOneEpoch(dataloader, net, optimizer, rpn_cls_criterion, rpn_loc_criteri
             torch.save( net.state_dict(), os.path.join( "./savedModels/",'fasterRCNN_itr_'+str(batch_idx)+'.pth') )
 
 
+    # train the remaining batch images
+    trainOneBatch(net, optimizer, rpn_cls_criterion, rpn_loc_criterion, epoch, targets, batch_imgs, scale_x, scale_y, index_inside)
 
 
 def train():
@@ -622,13 +626,13 @@ def train():
     rpn_cls_criterion = nn.CrossEntropyLoss(ignore_index=-1)
     #rpn_loc_criterion = nn.SmoothL1Loss()
     #rpn_loc_criterion = nn.L1Loss()
-    rpn_loc_criterion = nn.L1Loss(reduction='none')
-    #rpn_loc_criterion = nn.SmoothL1Loss(reduction='none')
+    #rpn_loc_criterion = nn.L1Loss(reduction='none')
+    rpn_loc_criterion = nn.SmoothL1Loss(reduction='none')
 
 
     # lr=0.002 no convergence ~ 30K overfitting?
     # lr=0.01 no convergence for fg/bg overfitting?
-    optimizer = optim.SGD(net.parameters(), lr=0.01, momentum=0.9, weight_decay=1e-4)
+    optimizer = optim.SGD(net.parameters(), lr=0.003, momentum=0.9, weight_decay=1e-4)
     scheduler = lr_scheduler.MultiStepLR(optimizer, milestones=[1,2], gamma=0.1)
 
     #summary(resnet_50)
