@@ -178,42 +178,29 @@ def label_assignment_vec(anchor, target, img, scale_x, scale_y, index_inside):
     else:
         start = time.time()
         # x, y, w, h
-        gt_bbox_xywh = [[target[i]['bbox'][0]*scale_x, target[i]['bbox'][1]*scale_y, target[i]['bbox'][2]*scale_x, target[i]['bbox'][3]*scale_y] for i in range(0,gt_bbox)]
+        gt_bbox_xywh = [[target[i]['bbox'][0]*scale_x, target[i]['bbox'][1]*scale_y, target[i]['bbox'][2]*scale_x, target[i]['bbox'][3]*scale_y] for i in range(0,gt_bbox) if int(target[i]['bbox'][2]+0.5)!=0 and int(target[i]['bbox'][3]+0.5)!=0]
 
         # x1, y1, x2, y2
-        gt_anchor_x1y1x2y2 = torch.tensor([[int(bbox[0]+0.5),int(bbox[1]+0.5),int(bbox[2]+bbox[0]+0.5),int(bbox[3]+bbox[1]+0.5)] for bbox in gt_bbox_xywh if int(bbox[2]+0.5)!=0 and int(bbox[3]+0.5)!=0 ])
+        gt_anchor_x1y1x2y2 = torch.tensor([[int(bbox[0]+0.5),int(bbox[1]+0.5),int(bbox[2]+bbox[0]+0.5),int(bbox[3]+bbox[1]+0.5)] for bbox in gt_bbox_xywh])
         gt_bbox = len(gt_anchor_x1y1x2y2)
         logging.info(f"Corrected # of gt bboxes: {gt_bbox}")
 
         tbl_vec = IoU_vec(gt_anchor_x1y1x2y2,anchor)
 
-        for i in range(0,gt_bbox):
-            max_v = torch.max(tbl_vec[i])
-            if max_v > 0:
-                fg_cls_label[torch.logical_or(tbl_vec[i]>0.7, tbl_vec[i] == max_v)] = 1
+        max_v_each_gt = torch.max(tbl_vec, 1)
+        max_iou_each_anchor, max_idx_each_anchor = torch.max(tbl_vec,0)
 
-        #background: IoU < 0.3 for all gt boxes
-        #for j in range(0,num_anchor):
+
+        #print(f"debug: {max_v_each_gt}")
         for j in index_inside:
-            idx = torch.argmax(tbl_vec[:,j])
-            max_v = tbl_vec[idx][j]
-            #max_v = torch.max(tbl_vec[:,j])
-            if max_v < 0.1 and fg_cls_label[j] != 1:
-            #if tbl[idx][j] == 0:
-            #if max_v == 0:
-                fg_cls_label[j] = 0
-
-
-    
-            #tbl[i][j] = IoU([x1,y1,x2,y2], anchor[j]) if abs(xa-x)*2< (w+wa) and abs(ya-y)*2 < (h+ha) else 0
             wa = anchor[j][2]-anchor[j][0]
             ha = anchor[j][3]-anchor[j][1]
             xa = anchor[j][0]+wa/2
             ya = anchor[j][1]+ha/2
+ 
 
-            x, y, w, h = gt_bbox_xywh[idx]
-            if abs(xa-x)*2< (w+wa) and abs(ya-y)*2 < (h+ha):
-    
+            if max_iou_each_anchor[j]>0.7:
+                x, y, w, h = gt_bbox_xywh[max_idx_each_anchor[j]]
                 #tx
                 reg_label[j][0] = (x-xa)/wa
                 #ty
@@ -222,6 +209,39 @@ def label_assignment_vec(anchor, target, img, scale_x, scale_y, index_inside):
                 reg_label[j][2] = np.log(w/wa)
                 #th
                 reg_label[j][3] = np.log(h/ha)
+
+                fg_cls_label[j] = 1
+
+
+        max_anchor_v_each_gt, max_anchor_idx_each_gt = torch.max(tbl_vec, 1)
+        #print(f"debug: max_anchor_v_each_gt    {max_anchor_v_each_gt}")
+        for i in range(0, gt_bbox):
+            j = max_anchor_idx_each_gt[i]
+            if max_anchor_v_each_gt[i] > 0 and fg_cls_label[j] != 1:
+
+                wa = anchor[j][2]-anchor[j][0]
+                ha = anchor[j][3]-anchor[j][1]
+                xa = anchor[j][0]+wa/2
+                ya = anchor[j][1]+ha/2
+ 
+                x, y, w, h = gt_bbox_xywh[i]
+
+                #tx
+                reg_label[j][0] = (x-xa)/wa
+                #ty
+                reg_label[j][1] = (y-ya)/ha
+                #tw
+                reg_label[j][2] = np.log(w/wa)
+                #th
+                reg_label[j][3] = np.log(h/ha)
+
+                fg_cls_label[j] = 1
+
+
+        for j in index_inside:
+            if max_iou_each_anchor[j]<0.1 and fg_cls_label[j] != 1:
+                fg_cls_label[j] = 0
+
 
 
 
@@ -422,7 +442,7 @@ def trainOneEpoch(dataloader, net, optimizer, rpn_cls_criterion, rpn_loc_criteri
     train_loss = 0
     cls_loss = 0
     reg_loss = 0
-    batch_size = 4
+    batch_size = 8
     batch_imgs = []
     scale_x = []
     scale_y = []
@@ -595,7 +615,7 @@ def train():
     #transform_train = transforms.Compose([transforms.ToTensor()])
     transform_train = transforms.Compose([transforms.ToTensor(),
                                           transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])])
-    coco_train = CocoDetection("/home/hhwu/datasets/coco/train2017", "/home/hhwu/datasets/coco/annotations/instances_train2017.json", transform=transform_train, target_transform=None)
+    coco_train = CocoDetection("/home/us000147/datasets/coco/train2017", "/home/us000147/datasets/coco/annotations/instances_train2017.json", transform=transform_train, target_transform=None)
     dataloader = DataLoader(coco_train, batch_size=1, shuffle=True, num_workers=0)
 
 
@@ -608,7 +628,7 @@ def train():
 
     # lr=0.002 no convergence ~ 30K overfitting?
     # lr=0.01 no convergence for fg/bg overfitting?
-    optimizer = optim.SGD(net.parameters(), lr=0.003, momentum=0.9, weight_decay=1e-4)
+    optimizer = optim.SGD(net.parameters(), lr=0.01, momentum=0.9, weight_decay=1e-4)
     scheduler = lr_scheduler.MultiStepLR(optimizer, milestones=[1,2], gamma=0.1)
 
     #summary(resnet_50)
