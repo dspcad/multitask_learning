@@ -192,6 +192,9 @@ def label_assignment_vec(anchor, target, img, scale_x, scale_y, index_inside):
 
 
         #print(f"debug: {max_v_each_gt}")
+        ######################################################################
+        #   1. Iou > 0.7 and it is the largest IoU among all ground truths   #
+        ######################################################################
         for j in index_inside:
             wa = anchor[j][2]-anchor[j][0]
             ha = anchor[j][3]-anchor[j][1]
@@ -200,7 +203,7 @@ def label_assignment_vec(anchor, target, img, scale_x, scale_y, index_inside):
  
 
             if max_iou_each_anchor[j]>0.7:
-                x, y, w, h = gt_bbox_xywh[max_idx_each_anchor[j]]
+                x, y, w, h = gt_bbox_xywh[ max_idx_each_anchor[j] ]
                 #tx
                 reg_label[j][0] = (x-xa)/wa
                 #ty
@@ -212,12 +215,22 @@ def label_assignment_vec(anchor, target, img, scale_x, scale_y, index_inside):
 
                 fg_cls_label[j] = 1
 
+        ##########################################################################
+        #   2. Fro some ground truth, find the anchor that has the largest IoU   #
+        ##########################################################################
 
-        max_anchor_v_each_gt, max_anchor_idx_each_gt = torch.max(tbl_vec, 1)
+        #max_anchor_v_each_gt, max_anchor_idx_each_gt = torch.max(tbl_vec, 1)
         #print(f"debug: max_anchor_v_each_gt    {max_anchor_v_each_gt}")
         for i in range(0, gt_bbox):
-            j = max_anchor_idx_each_gt[i]
-            if max_anchor_v_each_gt[i] > 0 and fg_cls_label[j] != 1:
+            j = index_inside[0]
+            iou = tbl_vec[i][j]
+
+            for k in index_inside:
+                if iou > tbl_vec[i][k]:
+                    iou = tbl_vec[i][k]
+                    j = k
+
+            if iou > 0 and fg_cls_label[j] != 1:
 
                 wa = anchor[j][2]-anchor[j][0]
                 ha = anchor[j][3]-anchor[j][1]
