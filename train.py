@@ -187,7 +187,7 @@ def label_assignment_vec(anchor, target, img, scale_x, scale_y, index_inside):
 
         tbl_vec = IoU_vec(gt_anchor_x1y1x2y2,anchor)
 
-        max_v_each_gt = torch.max(tbl_vec, 1)
+        #max_v_each_gt = torch.max(tbl_vec, 1)
         max_iou_each_anchor, max_idx_each_anchor = torch.max(tbl_vec,0)
 
 
@@ -216,7 +216,7 @@ def label_assignment_vec(anchor, target, img, scale_x, scale_y, index_inside):
                 fg_cls_label[j] = 1
 
         ##########################################################################
-        #   2. Fro some ground truth, find the anchor that has the largest IoU   #
+        #   2. For some ground truth, find the anchor that has the largest IoU   #
         ##########################################################################
 
         #max_anchor_v_each_gt, max_anchor_idx_each_gt = torch.max(tbl_vec, 1)
@@ -249,8 +249,13 @@ def label_assignment_vec(anchor, target, img, scale_x, scale_y, index_inside):
                 reg_label[j][3] = np.log(h/ha)
 
                 fg_cls_label[j] = 1
+                #print(f"hhwu DEBUG: {iou}    x:{x}  y:{y}  w:{w}  h:{h}")
+                #print(f"          : anchor:{j}    xa:{xa}  ya:{ya}  wa:{wa}  ha:{ha}")
 
-
+        ########################################################################################
+        #   3. Background assignment                                                           #
+        #     if the iou of rule 2. is small, the iou of background should be smaller than it. #
+        ########################################################################################
         for j in index_inside:
             if max_iou_each_anchor[j]<0.1 and fg_cls_label[j] != 1:
                 fg_cls_label[j] = 0
@@ -575,7 +580,7 @@ def trainOneEpoch(dataloader, net, optimizer, rpn_cls_criterion, rpn_loc_criteri
     train_loss = 0
     cls_loss = 0
     reg_loss = 0
-    batch_size = 32
+    batch_size = 4
     batch_imgs = []
     scale_x = []
     scale_y = []
@@ -632,7 +637,7 @@ def train():
     #transform_train = transforms.Compose([transforms.ToTensor()])
     transform_train = transforms.Compose([transforms.ToTensor(),
                                           transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])])
-    coco_train = CocoDetection("/home/us000147/datasets/coco/train2017", "/home/us000147/datasets/coco/annotations/instances_train2017.json", transform=transform_train, target_transform=None)
+    coco_train = CocoDetection("/home/hhwu/datasets/coco/train2017", "/home/hhwu/datasets/coco/annotations/instances_train2017.json", transform=transform_train, target_transform=None)
     dataloader = DataLoader(coco_train, batch_size=1, shuffle=True, num_workers=0)
 
 
