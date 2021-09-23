@@ -226,7 +226,7 @@ def label_assignment_vec(anchor, target, img, scale_x, scale_y, index_inside):
             iou = tbl_vec[i][j]
 
             for k in index_inside:
-                if iou > tbl_vec[i][k]:
+                if tbl_vec[i][k] > iou:
                     iou = tbl_vec[i][k]
                     j = k
 
