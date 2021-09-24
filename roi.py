@@ -29,21 +29,20 @@ class ROIHeadlNetwork(nn.Module):
         nn.init.normal_(self.fc_loc.weight, 0, 0.01)
 
 
-    def forward(self, x):
-        n, _, hh, ww = x.shape
+    def forward(self, proposal):
+        n, _, hh, ww = proposal.shape
+        print(f"debug proposal: {proposal.shape}")
 
-        proposal_x = x
-        #proposal_x = roi_sample(x,proposal)
-
-        proposal_x = self.roi_pooling(proposal_x)
-        out = proposal_x.view(proposal_x.size(0), -1)
+        out = self.roi_pooling(proposal)
+        print(f"debug roi out: {out.shape}")
+        out = out.view(out.size(0), -1)
         out = self.fc1(out)
         out = self.fc2(out)
 
         # location regression
         roi_locs   = self.fc_loc(out)               
         # classification
-        roi_scores = self.fc_loc(out)               
+        roi_scores = self.fc_cls(out)               
 
         return roi_locs, roi_scores
 
@@ -56,8 +55,8 @@ def test():
     x = torch.zeros([8, 512, 50, 40], dtype=torch.float32)
     roi_inst.eval()
     loc_output, cls_output = roi_inst(x)
-    print(loc_output.shape)
-    print(cls_output.shape)
+    print(f"loc: {loc_output.shape}")
+    print(f"cls: {cls_output.shape}")
 
 
 if __name__=='__main__':
