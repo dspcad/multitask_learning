@@ -618,7 +618,7 @@ def trainOneEpoch(dataloader, net, optimizer, rpn_cls_criterion, rpn_loc_criteri
 
 
     # train the remaining batch images
-    trainOneBatch(net, optimizer, rpn_cls_criterion, rpn_loc_criterion, epoch, targets, batch_imgs, scale_x, scale_y, index_inside)
+    trainOneBatch(net, optimizer, rpn_cls_criterion, rpn_loc_criterion, epoch, targets, batch_imgs, scale_x, scale_y, index_inside, train_loss, cls_loss, reg_loss, batch_idx)
 
 
 def train():

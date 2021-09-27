@@ -8,7 +8,7 @@ from creator import ProposalCreator
 
 
 class RegionProposalNetwork(nn.Module):
-    def __init__(self, in_channels=512, mid_channels=512, ratios=[0.25, 0.5, 1, 2, 4], anchor_sizes=[32, 64, 128, 256, 512], feat_stride=16):
+    def __init__(self, in_channels=512, mid_channels=512, ratios=[0.5, 1, 2], anchor_sizes=[64, 128, 256, 512], feat_stride=16):
         super(RegionProposalNetwork, self).__init__()
 
         # zero-centered anchor
