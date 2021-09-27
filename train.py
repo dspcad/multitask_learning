@@ -160,7 +160,7 @@ def gen_mini_batch(fg_cls_label,batch_size=128):
 def label_assignment_vec(anchor, target, img, scale_x, scale_y, index_inside):
     # img is pytorch tensor
     # batch, channel, height, width
-    _, height, width = img.shape
+    bsize, _, height, width = img.shape
     gt_bbox   = len(target)
     num_anchor = anchor.shape[0]
     tbl = np.zeros((gt_bbox,num_anchor))
@@ -400,39 +400,43 @@ def label_assignment(anchor, target, img, scale_x, scale_y, index_inside):
     return raw_fg_cls_label, fg_cls_label, reg_label
 
 
-#def rescale(imgs,targets, side_len):
-#    bsize, _, hh, ww = imgs.shape
-#
-#    #print(f"  hh: {hh}    ww:{ww}")
-#    scale = side_len/ww if hh > ww else side_len/hh
-#    if hh > ww:
-#        new_hh = int(hh * scale + 0.5)
-#        new_ww = side_len
-#    else:
-#        new_hh = side_len
-#        new_ww = int(ww * scale + 0.5)
-#
-#
-#    #imgs = transforms.Resize(imgs, side_len)
-#    #print(f" scale: {scale} new hh {new_hh}    new ww: {new_ww}")
-#    imgs = torch.nn.functional.interpolate(imgs,size=(new_hh,new_ww), mode='bilinear')
-#
-#
-#    return imgs, scale
-
 def rescale(img, side_len):
     bsize, _, hh, ww = img.shape
 
-    scale_x = side_len/ww
-    scale_y = side_len/hh
+    #print(f"  hh: {hh}    ww:{ww}")
+    scale = side_len/ww if hh > ww else side_len/hh
+    if hh > ww:
+        new_hh = int(hh * scale + 0.5)
+        new_ww = side_len
+        scale_x = 1
+        scale_y = scale
+    else:
+        new_hh = side_len
+        new_ww = int(ww * scale + 0.5)
+        scale_x = scale
+        scale_y = 1
 
-    new_ww = int(ww * scale_x + 0.5)
-    new_hh = int(hh * scale_y + 0.5)
 
+    #imgs = transforms.Resize(imgs, side_len)
+    #print(f" scale: {scale} new hh {new_hh}    new ww: {new_ww}")
     img = torch.nn.functional.interpolate(img,size=(new_hh,new_ww), mode='bilinear')
 
 
-    return img[0], scale_x, scale_y
+    return img, scale_x, scale_y
+
+#def rescale(img, side_len):
+#    bsize, _, hh, ww = img.shape
+#
+#    scale_x = side_len/ww
+#    scale_y = side_len/hh
+#
+#    new_ww = int(ww * scale_x + 0.5)
+#    new_hh = int(hh * scale_y + 0.5)
+#
+#    img = torch.nn.functional.interpolate(img,size=(new_hh,new_ww), mode='bilinear')
+#
+#
+#    return img[0], scale_x, scale_y
 
 def check_bbox(targets, img, num):
     for obj in targets:
@@ -456,137 +460,16 @@ def check_bbox(targets, img, num):
         #logging.info("    {}     {} {} {} {}".format(categories[cate_id], x1, y1, x2, y2))
 
 
-def trainOneBatch(net, optimizer, rpn_cls_criterion, rpn_loc_criterion, epoch, targets, batch_imgs, scale_x, scale_y, index_inside, train_loss, cls_loss, reg_loss, batch_idx):
-    ################################################
-    #   feed mini batch of images to Faster-RCNN   #
-    ################################################
-    optimizer.zero_grad()
-    batch_imgs = torch.stack(batch_imgs).to(device)
-    logging.debug(f"debug batch_imgs: {batch_imgs.shape}")
-    loc_output, cls_output, anchor = net(batch_imgs)
-
-    cls_output = cls_output.permute(0, 2, 3, 1).contiguous().view(-1,2)
-    loc_output = loc_output.permute(0, 2, 3, 1).contiguous().view(-1,4)
-    logging.debug(f"debug cls_output: {cls_output.shape}")
-    logging.debug(f"debug loc_output: {loc_output.shape}")
-
-    #########################################################
-    #   Generate the labels for RPN cls loss and loc loss   #
-    #########################################################
-    raw_fg_cls_label = []
-    fg_cls_label     = []
-    reg_label        = []
-    for i in range(0,len(batch_imgs)):
-        raw_fg_cls_label_1_img, fg_cls_label_1_img, reg_label_1_img = label_assignment_vec(anchor, targets[i], batch_imgs[i], scale_x[i], scale_y[i], index_inside)
-        raw_fg_cls_label.append(raw_fg_cls_label_1_img)
-        fg_cls_label.append(fg_cls_label_1_img)
-        reg_label.append(reg_label_1_img)
 
 
-    #mask = []
-    #for i, raw_fg_cls_label_1_img in enumerate(raw_fg_cls_label):
-    #    mask_1_img = [[1,1,1,1] if raw_fg_cls_label_1_img[idx] == 1 else [0,0,0,0] for idx in range(0,anchor.shape[0])]
-    #    mask.append(mask_1_img)
-
-
-    #########################################################
-    #    loc loss:  Mask the gradient computations of neg   #
-    #########################################################
-    #mask = torch.Tensor(mask).to(device)
-    #mask = np.array(mask)
-    #mask = torch.from_numpy(mask).view(-1,4).to(device)
-    #loc_output.register_hook(lambda grad: grad * mask.float())
-    reg_label = torch.stack(reg_label).contiguous().view(-1,4).to(device)
-    raw_fg_cls_label = torch.from_numpy(np.array(raw_fg_cls_label)).flatten().to(device)
-
-    rpn_loc_loss = rpn_loc_criterion(loc_output.float(), reg_label.float())
-    rpn_loc_loss_1         = rpn_loc_loss[raw_fg_cls_label == 1]
-    rpn_loc_loss_0         = rpn_loc_loss[raw_fg_cls_label == 0].zero_()
-    rpn_loc_loss_dont_care = rpn_loc_loss[raw_fg_cls_label == -1].zero_()
-    #rpn_loc_loss_1.retain_grad()
-    #rpn_loc_loss_0.retain_grad()
-    #rpn_loc_loss_dont_care.retain_grad()
-
-    #logging.info(f"debug raw_fg_cls_label: {torch.count_nonzero(raw_fg_cls_label)}")
-    #print("debug: rpn_loc_loss", rpn_loc_loss.grad_fn)
-    #print("debug: rpn_loc_loss_1", rpn_loc_loss_1.grad_fn)
-    #print("debug: rpn_loc_loss_0", rpn_loc_loss_0.grad_fn)
-
-    logging.debug("loss_1: ", torch.mean(rpn_loc_loss_1).item())
-    logging.debug("loss_0: ", torch.mean(rpn_loc_loss_0).item())
-    logging.debug("loss_dont_care: ", torch.mean(rpn_loc_loss_dont_care).item())
-    #rpn_loc_loss = torch.mean(rpn_loc_loss_1) + torch.mean(rpn_loc_loss_0) + torch.mean(rpn_loc_loss_dont_care)
-    #rpn_loc_loss = torch.mean(rpn_loc_loss_1)
-    rpn_loc_loss = rpn_loc_loss_1.mean()
-    #print("debug: rpn_loc_loss", rpn_loc_loss.grad_fn)
-    #rpn_loc_loss.retain_grad()
-    #rpn_loc_loss = rpn_loc_criterion(loc_output[raw_fg_cls_label==1].float(),reg_label[raw_fg_cls_label==1].float())
-
-    #################
-    #    cls loss   #
-    #################
-    #fg_cls_label = torch.stack(fg_cls_label).contiguous().view(-1,1).to(device)
-    fg_cls_label = torch.flatten(torch.stack(fg_cls_label)).to(device)
-    fg_cls_loss  = rpn_cls_criterion(cls_output, fg_cls_label)
-    #print(f"debug fg_cls_loss: {torch.exp(-fg_cls_loss[fg_cls_label != -1])}")
-    fg_score     = fg_cls_loss[fg_cls_label != -1]
-    fg_cls_loss  = fg_score.mean()
-    #print(f"debug score: {fg_score}")
-    #print(f"debug loc:   {rpn_loc_loss_1}")
-
-
-
-
-    total_loss = (fg_cls_loss + 2*rpn_loc_loss)
-    #print("debug: totoalloss", total_loss.grad_fn)
-
-    total_loss.backward()
-    #print(f"debug rpn_loc_loss_1: {rpn_loc_loss_1.grad}")
-    #print(f"debug rpn_loc_loss_0: {rpn_loc_loss_0.grad}")
-    #print(f"debug rpn_loc_loss_dont_care: {rpn_loc_loss_dont_care.grad}")
-    #print(f"debug rpn_loc_loss: {rpn_loc_loss.grad}")
-    optimizer.step()
-  
-
-    train_loss += total_loss.item()
-    cls_loss += fg_cls_loss.item()
-    reg_loss += rpn_loc_loss.item()
-
-
-    total = 0
-
-    # max value, index
-    _, predicted = cls_output.max(1)
-    correct = 0
-    for i, label in enumerate(predicted):
-        if fg_cls_label[i]!=-1:
-            total += 1
-        if fg_cls_label[i]==label:
-            correct += 1
-
-    num_batch = batch_idx/len(batch_imgs)
-    avg = train_loss/num_batch
-    avg_cls = cls_loss/num_batch
-    avg_reg = reg_loss/num_batch
-    logging.info(f"------------ Batch Training Result (Epoch {epoch})----------------")
-    logging.info(f"    {batch_idx}. Ave. train loss: {avg}    average cls loss: {avg_cls}               average reg loss: {avg_reg}")
-    logging.info(f"                                              current cls loss: {fg_cls_loss.item()}               current reg loss: {rpn_loc_loss.item()}")
-    if total !=0:
-        logging.info(f"    Total: {total} correct: {correct}   Accu. : {correct/total}  (learning rate: {optimizer.param_groups[0]['lr']})")
-    logging.info("---------------------------------------------------")
-
-    writer.add_scalar("Loss/train", avg, batch_idx)
-    writer.add_scalar("Loss/train_rpn_cls", fg_cls_loss, batch_idx)
-    writer.add_scalar("Loss/train_rpn_loc", rpn_loc_loss, batch_idx)
-
-    return train_loss, cls_loss, reg_loss
-
-
-def trainOneEpoch(dataloader, net, optimizer, rpn_cls_criterion, rpn_loc_criterion, epoch, index_inside, train_loss, cls_loss, reg_loss):
+def trainOneEpoch(dataloader, net, optimizer, rpn_cls_criterion, rpn_loc_criterion, epoch, train_loss, cls_loss, reg_loss):
 
     for batch_idx, (img, target) in enumerate(dataloader):
-        img, scale_x, scale_y = rescale(img, 800)
+        img, scale_x, scale_y = rescale(img, 600)
 
+        #print(f"debug:   img shape:  {img.shape}")
+        raw_anchor = net._generated_all_anchor(img.shape[2],img.shape[3])
+        index_inside = np.where((raw_anchor[:, 0] >= 0) & (raw_anchor[:, 1] >= 0) & (raw_anchor[:, 2] <= img.shape[2]) & (raw_anchor[:, 3] <= img.shape[3]))[0]
 
         #cv2.imshow(' ', img)
         #cv2.waitKey()
@@ -600,8 +483,8 @@ def trainOneEpoch(dataloader, net, optimizer, rpn_cls_criterion, rpn_loc_criteri
         ################################################
         optimizer.zero_grad()
         img = img.to(device)
-        print(f"dbug: {img.shape}")
-        loc_output, cls_output, anchor = net(img.reshape(1,img.shape[0],img.shape[1],img.shape[2] ))
+        #print(f"dbug: {img.shape}")
+        loc_output, cls_output, anchor = net(img)
 
         cls_output = cls_output.permute(0, 2, 3, 1).contiguous().view(-1,2)
         loc_output = loc_output.permute(0, 2, 3, 1).contiguous().view(-1,4)
@@ -730,8 +613,8 @@ def train():
     net = FasterRCNN(resnet_50, rpn_inst)
     net = net.to(device)
 
-    raw_anchor = net._generated_all_anchor(800,800)
-    index_inside = np.where((raw_anchor[:, 0] >= 0) & (raw_anchor[:, 1] >= 0) & (raw_anchor[:, 2] <= 800) & (raw_anchor[:, 3] <= 800))[0]
+    #raw_anchor = net._generated_all_anchor(800,800)
+    #index_inside = np.where((raw_anchor[:, 0] >= 0) & (raw_anchor[:, 1] >= 0) & (raw_anchor[:, 2] <= 800) & (raw_anchor[:, 3] <= 800))[0]
 
 
     logging.info("    2. Load coco train2017")
@@ -752,7 +635,7 @@ def train():
 
     # lr=0.002 no convergence ~ 30K overfitting?
     # lr=0.01 no convergence for fg/bg overfitting?
-    optimizer = optim.SGD(net.parameters(), lr=0.001, momentum=0.9, weight_decay=1e-4)
+    optimizer = optim.SGD(net.parameters(), lr=0.003, momentum=0.9, weight_decay=1e-4)
     scheduler = lr_scheduler.MultiStepLR(optimizer, milestones=[1,2], gamma=0.1)
 
     #summary(resnet_50)
@@ -763,7 +646,7 @@ def train():
     reg_loss = 0
 
     for epoch in range(1,5):
-        train_loss, cls_loss, reg_loss = trainOneEpoch(dataloader, net, optimizer, rpn_cls_criterion, rpn_loc_criterion, epoch, index_inside, train_loss, cls_loss, reg_loss)
+        train_loss, cls_loss, reg_loss = trainOneEpoch(dataloader, net, optimizer, rpn_cls_criterion, rpn_loc_criterion, epoch, train_loss, cls_loss, reg_loss)
         scheduler.step()
 
     writer.flush()
