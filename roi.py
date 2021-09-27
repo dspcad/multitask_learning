@@ -4,7 +4,6 @@ import torch
 from torch import nn
 
 from torchinfo import summary
-from creator import ProposalCreator
 
 
 class ROIHeadlNetwork(nn.Module):
