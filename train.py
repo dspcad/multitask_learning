@@ -167,6 +167,7 @@ def label_assignment_vec(anchor, target, img, scale_x, scale_y, index_inside):
     #logging.info(f"# of gt bboxes: {gt_bbox}   # of anchors: {num_anchor}   # of valid anchors: {len(index_inside)}")
 
     fg_cls_label = np.full(num_anchor,-1)
+    cls_label = np.full(num_anchor,0)
     reg_label = np.zeros((num_anchor,4))
 
 
@@ -179,11 +180,13 @@ def label_assignment_vec(anchor, target, img, scale_x, scale_y, index_inside):
         start = time.time()
         # x, y, w, h
         gt_bbox_xywh = [[target[i]['bbox'][0]*scale_x, target[i]['bbox'][1]*scale_y, target[i]['bbox'][2]*scale_x, target[i]['bbox'][3]*scale_y] for i in range(0,gt_bbox) if int(target[i]['bbox'][2]+0.5)!=0 and int(target[i]['bbox'][3]+0.5)!=0]
+        gt_bbox_cls_label = [target[i]['category_id'] for i in range(0,gt_bbox) if int(target[i]['bbox'][2]+0.5)!=0 and int(target[i]['bbox'][3]+0.5)!=0]
 
         # x1, y1, x2, y2
         gt_anchor_x1y1x2y2 = torch.tensor([[int(bbox[0]+0.5),int(bbox[1]+0.5),int(bbox[2]+bbox[0]+0.5),int(bbox[3]+bbox[1]+0.5)] for bbox in gt_bbox_xywh])
         gt_bbox = len(gt_anchor_x1y1x2y2)
         #logging.info(f"Corrected # of gt bboxes: {gt_bbox}")
+        #logging.info(f"class label: {len(gt_bbox_cls_label)}")
 
         tbl_vec = IoU_vec(gt_anchor_x1y1x2y2,anchor)
 
@@ -203,7 +206,8 @@ def label_assignment_vec(anchor, target, img, scale_x, scale_y, index_inside):
  
 
             if max_iou_each_anchor[j]>0.5:
-                x, y, w, h = gt_bbox_xywh[ max_idx_each_anchor[j] ]
+                target_gt_bbox = max_idx_each_anchor[j]
+                x, y, w, h = gt_bbox_xywh[ target_gt_bbox ]
                 #tx
                 reg_label[j][0] = (x-xa)/wa
                 #ty
@@ -214,6 +218,7 @@ def label_assignment_vec(anchor, target, img, scale_x, scale_y, index_inside):
                 reg_label[j][3] = np.log(h/ha)
 
                 fg_cls_label[j] = 1
+                cls_label[j]    = gt_bbox_cls_label[target_gt_bbox]
 
         ##########################################################################
         #   2. For some ground truth, find the anchor that has the largest IoU   #
@@ -249,6 +254,7 @@ def label_assignment_vec(anchor, target, img, scale_x, scale_y, index_inside):
                 reg_label[j][3] = np.log(h/ha)
 
                 fg_cls_label[j] = 1
+                cls_label[j]    = gt_bbox_cls_label[i]
                 #print(f"hhwu DEBUG: {iou}    x:{x}  y:{y}  w:{w}  h:{h}")
                 #print(f"          : anchor:{j}    xa:{xa}  ya:{ya}  wa:{wa}  ha:{ha}")
 
@@ -281,7 +287,7 @@ def label_assignment_vec(anchor, target, img, scale_x, scale_y, index_inside):
     fg_cls_label = torch.from_numpy(fg_cls_label).to(device)
     reg_label = torch.from_numpy(reg_label).to(device)
 
-    return raw_fg_cls_label, fg_cls_label, reg_label
+    return raw_fg_cls_label, fg_cls_label, reg_label, cls_label
 
 
 
@@ -468,8 +474,6 @@ def trainOneEpoch(dataloader, net, optimizer, rpn_cls_criterion, rpn_loc_criteri
         img, scale_x, scale_y = rescale(img, 600)
 
         #print(f"debug:   img shape:  {img.shape}")
-        raw_anchor = net._generated_all_anchor(img.shape[2],img.shape[3])
-        index_inside = np.where((raw_anchor[:, 0] >= 0) & (raw_anchor[:, 1] >= 0) & (raw_anchor[:, 2] <= img.shape[2]) & (raw_anchor[:, 3] <= img.shape[3]))[0]
 
         #cv2.imshow(' ', img)
         #cv2.waitKey()
@@ -485,6 +489,7 @@ def trainOneEpoch(dataloader, net, optimizer, rpn_cls_criterion, rpn_loc_criteri
         img = img.to(device)
         #print(f"dbug: {img.shape}")
         loc_output, cls_output, anchor = net(img)
+        index_inside = np.where((anchor[:, 0] >= 0) & (anchor[:, 1] >= 0) & (anchor[:, 2] <= img.shape[3]) & (anchor[:, 3] <= img.shape[2]))[0]
 
         cls_output = cls_output.permute(0, 2, 3, 1).contiguous().view(-1,2)
         loc_output = loc_output.permute(0, 2, 3, 1).contiguous().view(-1,4)
@@ -494,7 +499,7 @@ def trainOneEpoch(dataloader, net, optimizer, rpn_cls_criterion, rpn_loc_criteri
         #########################################################
         #   Generate the labels for RPN cls loss and loc loss   #
         #########################################################
-        raw_fg_cls_label, fg_cls_label, reg_label = label_assignment_vec(anchor, target, img, scale_x, scale_y, index_inside)
+        raw_fg_cls_label, fg_cls_label, reg_label, cls_label = label_assignment_vec(anchor, target, img, scale_x, scale_y, index_inside)
 
 
         if 1 not in raw_fg_cls_label:
@@ -516,10 +521,10 @@ def trainOneEpoch(dataloader, net, optimizer, rpn_cls_criterion, rpn_loc_criteri
         reg_label = reg_label.contiguous().view(-1,4).to(device)
         raw_fg_cls_label = torch.from_numpy(np.array(raw_fg_cls_label)).flatten().to(device)
 
-        rpn_loc_loss = rpn_loc_criterion(loc_output.float(), reg_label.float())
-        rpn_loc_loss_1         = rpn_loc_loss[raw_fg_cls_label == 1]
-        rpn_loc_loss_0         = rpn_loc_loss[raw_fg_cls_label == 0].zero_()
-        rpn_loc_loss_dont_care = rpn_loc_loss[raw_fg_cls_label == -1].zero_()
+        rpn_loc_score          = rpn_loc_criterion(loc_output.float(), reg_label.float())
+        rpn_loc_loss_1         = rpn_loc_score[raw_fg_cls_label == 1]
+        rpn_loc_loss_0         = rpn_loc_score[raw_fg_cls_label == 0].zero_()
+        rpn_loc_loss_dont_care = rpn_loc_score[raw_fg_cls_label == -1].zero_()
         #rpn_loc_loss_1.retain_grad()
         #rpn_loc_loss_0.retain_grad()
         #rpn_loc_loss_dont_care.retain_grad()
@@ -544,13 +549,32 @@ def trainOneEpoch(dataloader, net, optimizer, rpn_cls_criterion, rpn_loc_criteri
         #################
         #fg_cls_label = torch.stack(fg_cls_label).contiguous().view(-1,1).to(device)
         fg_cls_label = fg_cls_label.to(device)
-        fg_cls_loss  = rpn_cls_criterion(cls_output, fg_cls_label)
+        fg_cls_score = rpn_cls_criterion(cls_output, fg_cls_label)
         #print(f"debug fg_cls_loss: {torch.exp(-fg_cls_loss[fg_cls_label != -1])}")
-        fg_score     = fg_cls_loss[fg_cls_label != -1]
-        fg_cls_loss  = fg_score.mean()
+        fg_cls_loss  = fg_cls_score[fg_cls_label != -1]
+        fg_cls_loss  = fg_cls_loss.mean()
         #print(f"debug score: {fg_score}")
+        #print(f"debug prob:  {torch.exp(-fg_score)}")
         #print(f"debug loc:   {rpn_loc_loss_1}")
+        print(f"size of fg_cls_score: {len(fg_cls_score)}    size of rpn_loc_score: {len(rpn_loc_score)}   size of anchor: {len(anchor)}")
 
+  
+        # xa, ya, wa, ha
+        center_anchor = [[(a[2]+a[0])/2, (a[3]+a[1])/2, (a[2]-a[0])/2, (a[3]-a[1])/2] for a in anchor]
+        boxes = torch.Tensor([[loc[0]*center_anchor[idx][2]+center_anchor[idx][0], loc[1]*center_anchor[idx][3]+center_anchor[idx][1], torch.exp(loc[2])*center_anchor[idx][2], torch.exp(loc[3])*center_anchor[idx][3]]  for idx, loc in enumerate(rpn_loc_score)]).to(device)
+        #boxes = [[loc[0]*center_anchor[idx][2]+center_anchor[idx][0], loc[1]*center_anchor[idx][3]+center_anchor[idx][1], torch.exp(loc[2])*center_anchor[idx][2], torch.exp(loc[3])*center_anchor[idx][3]]  for idx, loc in enumerate(rpn_loc_score)]
+        #boxes = torch.Tensor([b if b[0]>=0 and b[2]>b[0] and b[1]>=0 and b[3]>b[1] else [0,0,0,0] for b in boxes]).to(device)
+        #res = torchvision.ops.nms(boxes, fg_cls_score,0.6)
+        boxes = boxes[index_inside]
+        cls_label = cls_label[index_inside]
+        nms_res = torchvision.ops.nms(boxes, fg_cls_score[index_inside],0.6)
+        print(f"debug: nms:  {cls_label[nms_res.cpu()]}")
+        print(f"debug: nms:  {len(nms_res)}")
+
+        #wa = anchor[j][2]-anchor[j][0]
+        #ha = anchor[j][3]-anchor[j][1]
+        #xa = anchor[j][0]+wa/2
+        #ya = anchor[j][1]+ha/2
 
 
 
