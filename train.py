@@ -14,6 +14,7 @@ writer = SummaryWriter()
 
 from resnet import *
 from rpn import *
+from roi import *
 from faster_rcnn import FasterRCNN
 import cv2, math
 import numpy as np
@@ -488,13 +489,11 @@ def trainOneEpoch(dataloader, net, optimizer, rpn_cls_criterion, rpn_loc_criteri
         optimizer.zero_grad()
         img = img.to(device)
         #print(f"dbug: {img.shape}")
-        loc_output, cls_output, anchor = net(img)
-        index_inside = np.where((anchor[:, 0] >= 0) & (anchor[:, 1] >= 0) & (anchor[:, 2] <= img.shape[3]) & (anchor[:, 3] <= img.shape[2]))[0]
-
-        cls_output = cls_output.permute(0, 2, 3, 1).contiguous().view(-1,2)
-        loc_output = loc_output.permute(0, 2, 3, 1).contiguous().view(-1,4)
+        loc_output, cls_output, anchor, roi= net(img)
         logging.debug(f"debug cls_output: {cls_output.shape}")
         logging.debug(f"debug loc_output: {loc_output.shape}")
+        index_inside = np.where((anchor[:, 0] >= 0) & (anchor[:, 1] >= 0) & (anchor[:, 2] <= img.shape[3]) & (anchor[:, 3] <= img.shape[2]))[0]
+
 
         #########################################################
         #   Generate the labels for RPN cls loss and loc loss   #
@@ -560,22 +559,22 @@ def trainOneEpoch(dataloader, net, optimizer, rpn_cls_criterion, rpn_loc_criteri
 
   
         # xa, ya, wa, ha
-        center_anchor = [[(a[2]+a[0])/2, (a[3]+a[1])/2, (a[2]-a[0])/2, (a[3]-a[1])/2] for a in anchor]
-        boxes = torch.Tensor([[loc[0]*center_anchor[idx][2]+center_anchor[idx][0], loc[1]*center_anchor[idx][3]+center_anchor[idx][1], torch.exp(loc[2])*center_anchor[idx][2], torch.exp(loc[3])*center_anchor[idx][3]]  for idx, loc in enumerate(rpn_loc_score)]).to(device)
+        #center_anchor = [[(a[2]+a[0])/2, (a[3]+a[1])/2, (a[2]-a[0])/2, (a[3]-a[1])/2] for a in anchor]
+        #boxes = torch.Tensor([[loc[0]*center_anchor[idx][2]+center_anchor[idx][0], loc[1]*center_anchor[idx][3]+center_anchor[idx][1], torch.exp(loc[2])*center_anchor[idx][2], torch.exp(loc[3])*center_anchor[idx][3]]  for idx, loc in enumerate(rpn_loc_score)]).to(device)
         #boxes = [[loc[0]*center_anchor[idx][2]+center_anchor[idx][0], loc[1]*center_anchor[idx][3]+center_anchor[idx][1], torch.exp(loc[2])*center_anchor[idx][2], torch.exp(loc[3])*center_anchor[idx][3]]  for idx, loc in enumerate(rpn_loc_score)]
         #boxes = torch.Tensor([b if b[0]>=0 and b[2]>b[0] and b[1]>=0 and b[3]>b[1] else [0,0,0,0] for b in boxes]).to(device)
         #res = torchvision.ops.nms(boxes, fg_cls_score,0.6)
-        boxes = boxes[index_inside]
+        boxes = roi[index_inside]
         cls_label = cls_label[index_inside]
         nms_res = torchvision.ops.nms(boxes, fg_cls_score[index_inside],0.6)
-        print(f"debug: nms:  {cls_label[nms_res.cpu()]}")
-        print(f"debug: nms:  {len(nms_res)}")
+        #print(f"debug: nms:  {cls_label[nms_res.cpu()]}")
+        #print(f"debug: nms:  {len(nms_res)}")
 
-        #wa = anchor[j][2]-anchor[j][0]
-        #ha = anchor[j][3]-anchor[j][1]
-        #xa = anchor[j][0]+wa/2
-        #ya = anchor[j][1]+ha/2
 
+        ############################
+        #    2nd Stage: ROI Head   #
+        ############################
+       
 
 
         total_loss = (fg_cls_loss + 2*rpn_loc_loss)
@@ -631,10 +630,11 @@ def trainOneEpoch(dataloader, net, optimizer, rpn_cls_criterion, rpn_loc_criteri
 
 def train():
     logging.info("    1. Construct Faster-RCNN")
-    resnet_50 = ResNet_large(ResidualBlockBottleneck, [3, 4, 6, 3]).to(device)
+    resnet_50 = ResNet_large(ResidualBlockBottleneck, [3, 4, 6, 3])
     rpn_inst = RegionProposalNetwork(2048, feat_stride=32)
+    roi_inst = ROIHeadlNetwork()
 
-    net = FasterRCNN(resnet_50, rpn_inst)
+    net = FasterRCNN(resnet_50, rpn_inst, roi_inst)
     net = net.to(device)
 
     #raw_anchor = net._generated_all_anchor(800,800)
