@@ -489,10 +489,10 @@ def trainOneEpoch(dataloader, net, optimizer, rpn_cls_criterion, rpn_loc_criteri
         optimizer.zero_grad()
         img = img.to(device)
         #print(f"dbug: {img.shape}")
-        loc_output, cls_output, anchor, roi= net(img)
+        loc_output, cls_output, anchor, roi, index_inside, roi_locs, roi_scores = net(img)
         logging.debug(f"debug cls_output: {cls_output.shape}")
         logging.debug(f"debug loc_output: {loc_output.shape}")
-        index_inside = np.where((anchor[:, 0] >= 0) & (anchor[:, 1] >= 0) & (anchor[:, 2] <= img.shape[3]) & (anchor[:, 3] <= img.shape[2]))[0]
+        #index_inside = np.where((anchor[:, 0] >= 0) & (anchor[:, 1] >= 0) & (anchor[:, 2] <= img.shape[3]) & (anchor[:, 3] <= img.shape[2]))[0]
 
 
         #########################################################
@@ -564,9 +564,9 @@ def trainOneEpoch(dataloader, net, optimizer, rpn_cls_criterion, rpn_loc_criteri
         #boxes = [[loc[0]*center_anchor[idx][2]+center_anchor[idx][0], loc[1]*center_anchor[idx][3]+center_anchor[idx][1], torch.exp(loc[2])*center_anchor[idx][2], torch.exp(loc[3])*center_anchor[idx][3]]  for idx, loc in enumerate(rpn_loc_score)]
         #boxes = torch.Tensor([b if b[0]>=0 and b[2]>b[0] and b[1]>=0 and b[3]>b[1] else [0,0,0,0] for b in boxes]).to(device)
         #res = torchvision.ops.nms(boxes, fg_cls_score,0.6)
-        boxes = roi[index_inside]
+        #boxes = roi[index_inside]
         cls_label = cls_label[index_inside]
-        nms_res = torchvision.ops.nms(boxes, fg_cls_score[index_inside],0.6)
+        #nms_res = torchvision.ops.nms(boxes, fg_cls_score[index_inside],0.6)
         #print(f"debug: nms:  {cls_label[nms_res.cpu()]}")
         #print(f"debug: nms:  {len(nms_res)}")
 
@@ -632,9 +632,8 @@ def train():
     logging.info("    1. Construct Faster-RCNN")
     resnet_50 = ResNet_large(ResidualBlockBottleneck, [3, 4, 6, 3])
     rpn_inst = RegionProposalNetwork(2048, feat_stride=32)
-    roi_inst = ROIHeadlNetwork()
 
-    net = FasterRCNN(resnet_50, rpn_inst, roi_inst)
+    net = FasterRCNN(resnet_50, rpn_inst)
     net = net.to(device)
 
     #raw_anchor = net._generated_all_anchor(800,800)

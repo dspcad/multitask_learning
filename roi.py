@@ -60,3 +60,9 @@ def test():
 
 if __name__=='__main__':
     test()
+
+
+#cv::Rect curR = cv::Rect(max((int)curBbox.x,0), max((int)curBbox.y,0), max((int)curBbox.width,0), max((int)curBbox.height,0));
+#cv::Rect preR = cv::Rect(max((int)preBbox.x,0), max((int)preBbox.y,0), max((int)preBbox.width,0), max((int)preBbox.height,0));
+#printf("hhwu debug: cur rect %d %d %d %d\n", (int)curBbox.x, (int)curBbox.y, (int)curBbox.width, (int)curBbox.height);
+#printf("hhwu debug: pre rect %d %d %d %d\n", (int)preBbox.x, (int)preBbox.y, (int)preBbox.width, (int)preBbox.height);
