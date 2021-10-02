@@ -124,14 +124,14 @@ def IoU(bb1=list(),bb2=list()):
 #    return fg_cls_label
 
 
-def gen_mini_batch(fg_cls_label,batch_size=128):
+def gen_mini_batch(fg_cls_label,cls_label):
     res_idx_0 = np.array(np.where(fg_cls_label == 0)).flatten()
     res_idx_1 = np.array(np.where(fg_cls_label == 1)).flatten()
 
-    #logging.info("Generate mini batch: ")
-    #logging.info("    Before: ")
-    #logging.info(f"    # of pos: {len(res_idx_1)}")
-    #logging.info(f"    # of neg: {len(res_idx_0)}")
+    logging.info("Generate mini batch: ")
+    logging.info("    Before: ")
+    logging.info(f"    # of pos: {len(res_idx_1)}")
+    logging.info(f"    # of neg: {len(res_idx_0)}")
 
 
     batch_size = min(len(res_idx_0),len(res_idx_1))
@@ -140,22 +140,24 @@ def gen_mini_batch(fg_cls_label,batch_size=128):
         non_selected_idx_of_neg = np.random.choice(res_idx_0, len(res_idx_0)-batch_size,replace=False)
         for idx in non_selected_idx_of_neg:
             fg_cls_label[idx]=-1
+            cls_label[idx]=-1
 
 
     if len(res_idx_1) > batch_size:
         non_selected_idx_of_pos = np.random.choice(res_idx_1, len(res_idx_1)-batch_size,replace=False)
         for idx in non_selected_idx_of_pos:
             fg_cls_label[idx]=-1
+            cls_label[idx]=-1
 
 
     res_idx_0 = np.array(np.where(fg_cls_label == 0)).flatten()
     res_idx_1 = np.array(np.where(fg_cls_label == 1)).flatten()
 
-    #logging.info("    After: ")
-    #logging.info(f"    # of pos: {len(res_idx_1)}")
-    #logging.info(f"    # of neg: {len(res_idx_0)}")
+    logging.info("    After: ")
+    logging.info(f"    # of pos: {len(res_idx_1)}")
+    logging.info(f"    # of neg: {len(res_idx_0)}")
 
-    return fg_cls_label
+    return fg_cls_label, cls_label
 
 
 def label_assignment_vec(anchor, target, img, scale_x, scale_y, index_inside):
@@ -168,8 +170,8 @@ def label_assignment_vec(anchor, target, img, scale_x, scale_y, index_inside):
     #logging.info(f"# of gt bboxes: {gt_bbox}   # of anchors: {num_anchor}   # of valid anchors: {len(index_inside)}")
 
     fg_cls_label = np.full(num_anchor,-1)
-    cls_label = np.full(num_anchor,0)
-    reg_label = np.zeros((num_anchor,4))
+    cls_label    = np.full(num_anchor,-1)
+    reg_label    = np.zeros((num_anchor,4))
 
 
 
@@ -266,6 +268,7 @@ def label_assignment_vec(anchor, target, img, scale_x, scale_y, index_inside):
         for j in index_inside:
             if max_iou_each_anchor[j]<0.1 and fg_cls_label[j] != 1:
                 fg_cls_label[j] = 0
+                cls_label[j]    = 0
 
 
 
@@ -279,12 +282,14 @@ def label_assignment_vec(anchor, target, img, scale_x, scale_y, index_inside):
     #print(f"   raw pos: {np.count_nonzero(raw_fg_cls_label)}")
     #print(f"       pos: {np.count_nonzero(fg_cls_label)}")
 
-    fg_cls_label = gen_mini_batch(fg_cls_label,256)
-    #logging.info(f"# of fg anchors: {np.count_nonzero(fg_cls_label == 1)}")
-    #logging.info(f"# of bg anchors: {np.count_nonzero(fg_cls_label == 0)}")
-    #logging.info(f"# of dont care anchors: {np.count_nonzero(fg_cls_label == -1)}")
+    fg_cls_label, cls_label = gen_mini_batch(fg_cls_label,cls_label)
+    logging.info(f"# of fg anchors: {np.count_nonzero(fg_cls_label == 1)}")
+    logging.info(f"# of bg anchors: {np.count_nonzero(fg_cls_label == 0)}")
+    logging.info(f"# of dont care anchors: {np.count_nonzero(fg_cls_label == -1)}")
+    logging.info(f"# of category anchors: {np.count_nonzero(cls_label != -1)}")
 
 
+    cls_label = torch.from_numpy(cls_label).to(device)
     fg_cls_label = torch.from_numpy(fg_cls_label).to(device)
     reg_label = torch.from_numpy(reg_label).to(device)
 
@@ -469,7 +474,7 @@ def check_bbox(targets, img, num):
 
 
 
-def trainOneEpoch(dataloader, net, optimizer, rpn_cls_criterion, rpn_loc_criterion, epoch, train_loss, cls_loss, reg_loss):
+def trainOneEpoch(dataloader, net, optimizer, rpn_cls_criterion, rpn_loc_criterion, roi_cls_criterion, roi_loc_criterion, epoch, train_loss, train_rpn_cls_loss, train_rpn_reg_loss, train_roi_cls_loss, train_roi_reg_loss):
 
     for batch_idx, (img, target) in enumerate(dataloader):
         img, scale_x, scale_y = rescale(img, 600)
@@ -489,20 +494,38 @@ def trainOneEpoch(dataloader, net, optimizer, rpn_cls_criterion, rpn_loc_criteri
         optimizer.zero_grad()
         img = img.to(device)
         #print(f"dbug: {img.shape}")
-        loc_output, cls_output, anchor, roi, index_inside, roi_locs, roi_scores = net(img)
+
+
+        #######################################################
+        #    Generate the anchors and select the valid ones   #
+        #######################################################
+        net.rpn._generated_all_anchor(img.shape[2], img.shape[3])
+        #valid_anchor = torch.where((net.rpn.anchor[:, 0] >= 0) & (net.rpn.anchor[:, 1] >= 0) & (net.rpn.anchor[:, 2] <= img.shape[3]) & (net.rpn.anchor[:, 3] <= img.shape[2]))[0]
+        valid_anchor_index = torch.where((net.rpn.anchor[:, 0] >= 0) & (net.rpn.anchor[:, 1] >= 0) & (net.rpn.anchor[:, 2] <= img.shape[3]) & (net.rpn.anchor[:, 3] <= img.shape[2]))[0]
+
+        #########################################################
+        #   Generate the labels for RPN cls loss and loc loss   #
+        #########################################################
+        raw_fg_cls_label, fg_cls_label, reg_label, cls_label = label_assignment_vec(net.rpn.anchor, target, img, scale_x, scale_y, valid_anchor_index)
+
+        roi_cls_label = cls_label[cls_label!=-1]
+        roi_reg_label = reg_label[cls_label!=-1]
+        print(f"debug: roi cls label:  {cls_label.shape}")
+        print(f"debug: roi reg label:  {roi_reg_label.shape}")
+
+
+        if 1 not in raw_fg_cls_label:
+            continue
+
+
+        loc_output, cls_output, anchor, roi, roi_locs, roi_scores, nms_res = net(img, cls_label)
         logging.debug(f"debug cls_output: {cls_output.shape}")
         logging.debug(f"debug loc_output: {loc_output.shape}")
         #index_inside = np.where((anchor[:, 0] >= 0) & (anchor[:, 1] >= 0) & (anchor[:, 2] <= img.shape[3]) & (anchor[:, 3] <= img.shape[2]))[0]
 
 
-        #########################################################
-        #   Generate the labels for RPN cls loss and loc loss   #
-        #########################################################
-        raw_fg_cls_label, fg_cls_label, reg_label, cls_label = label_assignment_vec(anchor, target, img, scale_x, scale_y, index_inside)
 
 
-        if 1 not in raw_fg_cls_label:
-            continue
 
         #mask = []
         #for i, raw_fg_cls_label_1_img in enumerate(raw_fg_cls_label):
@@ -548,14 +571,14 @@ def trainOneEpoch(dataloader, net, optimizer, rpn_cls_criterion, rpn_loc_criteri
         #################
         #fg_cls_label = torch.stack(fg_cls_label).contiguous().view(-1,1).to(device)
         fg_cls_label = fg_cls_label.to(device)
-        fg_cls_score = rpn_cls_criterion(cls_output, fg_cls_label)
+        rpn_cls_loss  = rpn_cls_criterion(cls_output, fg_cls_label)
         #print(f"debug fg_cls_loss: {torch.exp(-fg_cls_loss[fg_cls_label != -1])}")
-        fg_cls_loss  = fg_cls_score[fg_cls_label != -1]
-        fg_cls_loss  = fg_cls_loss.mean()
+        #fg_cls_loss  = fg_cls_score[fg_cls_label != -1]
+        #fg_cls_loss  = fg_cls_loss.mean()
         #print(f"debug score: {fg_score}")
         #print(f"debug prob:  {torch.exp(-fg_score)}")
         #print(f"debug loc:   {rpn_loc_loss_1}")
-        print(f"size of fg_cls_score: {len(fg_cls_score)}    size of rpn_loc_score: {len(rpn_loc_score)}   size of anchor: {len(anchor)}")
+        #print(f"size of fg_cls_score: {len(fg_cls_score)}    size of rpn_loc_score: {len(rpn_loc_score)}   size of anchor: {len(anchor)}")
 
   
         # xa, ya, wa, ha
@@ -565,19 +588,43 @@ def trainOneEpoch(dataloader, net, optimizer, rpn_cls_criterion, rpn_loc_criteri
         #boxes = torch.Tensor([b if b[0]>=0 and b[2]>b[0] and b[1]>=0 and b[3]>b[1] else [0,0,0,0] for b in boxes]).to(device)
         #res = torchvision.ops.nms(boxes, fg_cls_score,0.6)
         #boxes = roi[index_inside]
-        cls_label = cls_label[index_inside]
         #nms_res = torchvision.ops.nms(boxes, fg_cls_score[index_inside],0.6)
         #print(f"debug: nms:  {cls_label[nms_res.cpu()]}")
-        #print(f"debug: nms:  {len(nms_res)}")
 
 
         ############################
         #    2nd Stage: ROI Head   #
         ############################
-       
+        cls_label = cls_label[cls_label != -1][nms_res]
+        print(f"debug: cls_label:  {cls_label}")
+        roi_cls_loss = roi_cls_criterion(roi_scores, cls_label)
+
+        selected_pos = [i for i, x in enumerate(cls_label) if x!=0 ]
+        selected_neg = [i for i, x in enumerate(cls_label) if x==0 ]
+        
+        roi_reg_label = roi_reg_label[nms_res]
+        flattened_roi_reg_label = torch.zeros(len(nms_res),324).to(device)
+        for i, label in enumerate(cls_label):
+            flattened_roi_reg_label[i][label*4:(label+1)*4] = roi_reg_label[i]
+
+        print(f"debug: reg label:  {roi_reg_label}")
+        print(f"debug: reg output: {roi_locs}")
+        roi_loc_score          = roi_loc_criterion(roi_locs.float(), flattened_roi_reg_label.float())
+        roi_loc_loss_0 = 0
+        roi_loc_loss_1 = 0
+        for i, label in enumerate(cls_label):
+            roi_loc_loss_0 += roi_loc_score[i][:label*4].zero_() + roi_loc_score[i][(label+1)*4:].zero_()
+            roi_loc_loss_1 += roi_loc_score[i][label*4:(label+1)*4]
 
 
-        total_loss = (fg_cls_loss + 2*rpn_loc_loss)
+        print(f"debug: cls label shape:  {cls_label.shape}")
+        print(f"debug: roi loc loss 1 shape: {roi_loc_loss_1.shape}")
+        print(f"debug: cls label:  {cls_label}")
+        print(f"debug: roi loc loss 1 : {roi_loc_loss_1}")
+
+
+        #total_loss = (rpn_cls_loss + 2*rpn_loc_loss) + roi_cls_loss + roi_loc_loss
+        total_loss = (rpn_cls_loss + 2*rpn_loc_loss)
         #print("debug: totoalloss", total_loss.grad_fn)
 
         total_loss.backward()
@@ -589,8 +636,10 @@ def trainOneEpoch(dataloader, net, optimizer, rpn_cls_criterion, rpn_loc_criteri
   
 
         train_loss += total_loss.item()
-        cls_loss += fg_cls_loss.item()
-        reg_loss += rpn_loc_loss.item()
+        train_rpn_cls_loss += rpn_cls_loss.item()
+        train_rpn_reg_loss += rpn_loc_loss.item()
+        train_roi_cls_loss += roi_cls_loss.item()
+        train_roi_reg_loss += roi_loc_loss.item()
 
 
         total = 0
@@ -604,18 +653,25 @@ def trainOneEpoch(dataloader, net, optimizer, rpn_cls_criterion, rpn_loc_criteri
             if fg_cls_label[i]==label:
                 correct += 1
 
-        avg = train_loss/(batch_idx+1)
-        avg_cls = cls_loss/(batch_idx+1)
-        avg_reg = reg_loss/(batch_idx+1)
+        avg_train   = train_loss/(batch_idx+1)
+        avg_rpn_cls = train_rpn_cls_loss/(batch_idx+1)
+        avg_rpn_reg = train_rpn_reg_loss/(batch_idx+1)
+        avg_roi_cls = train_rpn_cls_loss/(batch_idx+1)
+        avg_roi_reg = train_rpn_reg_loss/(batch_idx+1)
         logging.info(f"------------ Batch Training Result (Epoch {epoch})----------------")
-        logging.info(f"    {batch_idx}. Ave. train loss: {avg}    average cls loss: {avg_cls}               average reg loss: {avg_reg}")
-        logging.info(f"                                              current cls loss: {fg_cls_loss.item()}               current reg loss: {rpn_loc_loss.item()}")
+        logging.info(f"    {batch_idx}. Ave. train loss: {avg_train}")
+        logging.info(f"                      average rpn cls loss: {avg_rpn_cls}     current rpn cls loss: {rpn_cls_loss.item()}")
+        logging.info(f"                      average rpn reg loss: {avg_rpn_reg}     current rpn reg loss: {rpn_loc_loss.item()}")
+        logging.info(f"                      average roi cls loss: {avg_roi_cls}     current roi cls loss: {roi_cls_loss.item()}")
+        logging.info(f"                      average roi reg loss: {avg_roi_reg}     current roi reg loss: {roi_loc_loss.item()}")
         logging.info(f"    Total: {total} correct: {correct}   Accu. : {correct/total}  (learning rate: {optimizer.param_groups[0]['lr']})")
         logging.info("---------------------------------------------------")
 
-        writer.add_scalar("Loss/train", avg, batch_idx)
-        writer.add_scalar("Loss/train_rpn_cls", fg_cls_loss, batch_idx)
-        writer.add_scalar("Loss/train_rpn_loc", rpn_loc_loss, batch_idx)
+        writer.add_scalar("Loss/train", avg_train, batch_idx)
+        writer.add_scalar("Loss/train_rpn_cls", train_rpn_cls_loss, batch_idx)
+        writer.add_scalar("Loss/train_rpn_loc", train_rpn_reg_loss, batch_idx)
+        writer.add_scalar("Loss/train_roi_cls", train_roi_cls_loss, batch_idx)
+        writer.add_scalar("Loss/train_roi_loc", train_roi_reg_loss, batch_idx)
 
 
 
@@ -626,7 +682,7 @@ def trainOneEpoch(dataloader, net, optimizer, rpn_cls_criterion, rpn_loc_criteri
              torch.save( net.state_dict(), os.path.join( "./savedModels/",'fasterRCNN_itr_'+str(batch_idx)+'.pth') )
 
 
-    return train_loss, cls_loss, reg_loss
+    return train_loss, train_rpn_cls_loss, train_rpn_reg_loss, train_roi_cls_loss, train_roi_reg_loss
 
 def train():
     logging.info("    1. Construct Faster-RCNN")
@@ -648,13 +704,15 @@ def train():
     dataloader = DataLoader(coco_train, batch_size=1, shuffle=True, num_workers=0)
 
 
-    rpn_cls_criterion = nn.CrossEntropyLoss(ignore_index=-1,reduction='none')
+    rpn_cls_criterion = nn.CrossEntropyLoss(ignore_index=-1, reduction='mean')
     #rpn_cls_criterion = nn.CrossEntropyLoss(ignore_index=-1)
     #rpn_loc_criterion = nn.SmoothL1Loss()
     #rpn_loc_criterion = nn.L1Loss()
     #rpn_loc_criterion = nn.L1Loss(reduction='none')
     rpn_loc_criterion = nn.SmoothL1Loss(reduction='none')
 
+    roi_cls_criterion = nn.CrossEntropyLoss(ignore_index=-1, reduction='mean')
+    roi_loc_criterion = nn.SmoothL1Loss(reduction='none')
 
     # lr=0.002 no convergence ~ 30K overfitting?
     # lr=0.01 no convergence for fg/bg overfitting?
@@ -665,11 +723,13 @@ def train():
     #model = torchvision.models.resnet50()
     #summary(model)
     train_loss = 0
-    cls_loss = 0
-    reg_loss = 0
+    train_rpn_cls_loss = 0
+    train_rpn_reg_loss = 0
+    train_roi_cls_loss = 0
+    train_roi_reg_loss = 0
 
     for epoch in range(1,5):
-        train_loss, cls_loss, reg_loss = trainOneEpoch(dataloader, net, optimizer, rpn_cls_criterion, rpn_loc_criterion, epoch, train_loss, cls_loss, reg_loss)
+        train_loss, train_rpn_cls_loss, train_rpn_reg_loss, train_roi_cls_loss, train_roi_reg_loss = trainOneEpoch(dataloader, net, optimizer, rpn_cls_criterion, rpn_loc_criterion, roi_cls_criterion, roi_loc_criterion, epoch, train_loss, train_rpn_cls_loss, train_rpn_reg_loss, train_roi_cls_loss, train_roi_reg_loss)
         scheduler.step()
 
     writer.flush()
