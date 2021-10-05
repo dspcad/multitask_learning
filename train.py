@@ -30,6 +30,8 @@ torch.multiprocessing.set_sharing_strategy('file_system')
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
+mapped_ids = {}
+original_ids = {}
 
 def loadLabels():
     print("---------- Load coco.name ---------")
@@ -38,9 +40,25 @@ def loadLabels():
 
         categories = f.read().split("\n")
         categories = [x for x in categories if x]
-        categories.insert(0,'')
+        categories.insert(0,'background')
         logging.info("COCO Dataset classes: {}".format(len(categories)))
+        #for i, cls in enumerate(categories):
+        #    print(f"{i}:  {cls}")
     print("-----------------------------")
+    print("---------- Load coco.mapping ---------")
+    global mapped_ids
+    with open("coco.mapping", "r") as f:
+
+        ids = f.read().split("\n")
+        ids = [x for x in ids if x]
+        for i, key in enumerate(ids):
+            key = int(key)
+            i   = int(i)
+            mapped_ids[key]=i
+            original_ids[i]=key
+            print(f"mapped: {key} ->  {mapped_ids[key]}    original: {i} -> {key}")
+    print("-----------------------------")
+
 
 def IoU_vec(bbox_g,bbox_a):
     #print(f"debug: {bbox_g.shape}")
@@ -183,7 +201,9 @@ def label_assignment_vec(anchor, target, img, scale_x, scale_y, index_inside):
         start = time.time()
         # x, y, w, h
         gt_bbox_xywh = [[target[i]['bbox'][0]*scale_x, target[i]['bbox'][1]*scale_y, target[i]['bbox'][2]*scale_x, target[i]['bbox'][3]*scale_y] for i in range(0,gt_bbox) if int(target[i]['bbox'][2]+0.5)!=0 and int(target[i]['bbox'][3]+0.5)!=0]
-        gt_bbox_cls_label = [target[i]['category_id'] for i in range(0,gt_bbox) if int(target[i]['bbox'][2]+0.5)!=0 and int(target[i]['bbox'][3]+0.5)!=0]
+
+        #print(f"cls id: {int(target[0]['category_id'].data[0])} -> {mapped_ids[int(target[0]['category_id'].data[0])]}")
+        gt_bbox_cls_label = [mapped_ids[int(target[i]['category_id'].data[0])] for i in range(0,gt_bbox) if int(target[i]['bbox'][2]+0.5)!=0 and int(target[i]['bbox'][3]+0.5)!=0]
 
         # x1, y1, x2, y2
         gt_anchor_x1y1x2y2 = torch.tensor([[int(bbox[0]+0.5),int(bbox[1]+0.5),int(bbox[2]+bbox[0]+0.5),int(bbox[3]+bbox[1]+0.5)] for bbox in gt_bbox_xywh])
@@ -607,14 +627,15 @@ def trainOneEpoch(dataloader, net, optimizer, rpn_cls_criterion, rpn_loc_criteri
         for i, label in enumerate(cls_label):
             flattened_roi_reg_label[i][label*4:(label+1)*4] = roi_reg_label[i]
 
-        print(f"debug: reg label:  {roi_reg_label}")
-        print(f"debug: reg output: {roi_locs}")
+        print(f"debug: reg label:  {roi_reg_label.shape}")
+        print(f"debug: reg output: {roi_locs.shape}")
         roi_loc_score          = roi_loc_criterion(roi_locs.float(), flattened_roi_reg_label.float())
-        roi_loc_loss_0 = 0
+        #roi_loc_loss_0 = 0
         roi_loc_loss_1 = 0
         for i, label in enumerate(cls_label):
-            roi_loc_loss_0 += roi_loc_score[i][:label*4].zero_() + roi_loc_score[i][(label+1)*4:].zero_()
-            roi_loc_loss_1 += roi_loc_score[i][label*4:(label+1)*4]
+            roi_loc_score[i][:label*4].zero_()
+            roi_loc_score[i][(label+1)*4:].zero_()
+            roi_loc_loss_1 += roi_loc_score[i][label*4:(label+1)*4].mean()
 
 
         print(f"debug: cls label shape:  {cls_label.shape}")
@@ -623,8 +644,9 @@ def trainOneEpoch(dataloader, net, optimizer, rpn_cls_criterion, rpn_loc_criteri
         print(f"debug: roi loc loss 1 : {roi_loc_loss_1}")
 
 
-        #total_loss = (rpn_cls_loss + 2*rpn_loc_loss) + roi_cls_loss + roi_loc_loss
-        total_loss = (rpn_cls_loss + 2*rpn_loc_loss)
+        roi_loc_loss = roi_loc_loss_1.mean()
+        total_loss = (rpn_cls_loss + 2*rpn_loc_loss) + roi_cls_loss + roi_loc_loss
+        #total_loss = (rpn_cls_loss + 2*rpn_loc_loss)
         #print("debug: totoalloss", total_loss.grad_fn)
 
         total_loss.backward()

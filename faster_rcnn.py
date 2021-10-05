@@ -16,9 +16,9 @@ class FasterRCNN(nn.Module):
         self.fc2 = nn.Linear(4096, 4096)
 
         # head for the classification
-        self.fc_cls = nn.Linear(4096, 91)
+        self.fc_cls = nn.Linear(4096, 81)
         # head for the location 81x4
-        self.fc_loc = nn.Linear(4096, 364)
+        self.fc_loc = nn.Linear(4096, 324)
 
 
         nn.init.normal_(self.fc1.weight, 0, 0.01)
