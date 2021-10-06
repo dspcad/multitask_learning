@@ -67,7 +67,7 @@ class RegionProposalNetwork(nn.Module):
 
         #print(f"debug: rpn anchor:   {self.anchor.shape}")
         # xa, ya, wa, ha
-        center_anchor = [[(a[2]+a[0])/2, (a[3]+a[1])/2, (a[2]-a[0])/2, (a[3]-a[1])/2] for a in self.anchor]
+        center_anchor = [[(a[2]+a[0])/2, (a[3]+a[1])/2, a[2]-a[0], a[3]-a[1]] for a in self.anchor]
         print(f"debug: rpn center anchor:   {len(center_anchor)}     ron_locs: {rpn_locs.shape}")
         rois = torch.Tensor([[loc[0]*center_anchor[idx][2]+center_anchor[idx][0], loc[1]*center_anchor[idx][3]+center_anchor[idx][1], torch.exp(loc[2])*center_anchor[idx][2], torch.exp(loc[3])*center_anchor[idx][3]]  for idx, loc in enumerate(loc_output)]).to(device)
 

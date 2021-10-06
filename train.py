@@ -615,16 +615,17 @@ def trainOneEpoch(dataloader, net, optimizer, rpn_cls_criterion, rpn_loc_criteri
         ############################
         #    2nd Stage: ROI Head   #
         ############################
-        cls_label = cls_label[cls_label != -1][nms_res]
-        print(f"debug: cls_label:  {cls_label}")
-        roi_cls_loss = roi_cls_criterion(roi_scores, cls_label)
+        roi_cls_label = roi_cls_label[nms_res]
+        print(f"debug: cls_label:  {roi_cls_label}")
+        roi_cls_loss = roi_cls_criterion(roi_scores, roi_cls_label)
 
-        selected_pos = [i for i, x in enumerate(cls_label) if x!=0 ]
-        selected_neg = [i for i, x in enumerate(cls_label) if x==0 ]
+        #selected_pos = [i for i, x in enumerate(cls_label) if x!=0 ]
+        #selected_neg = [i for i, x in enumerate(cls_label) if x==0 ]
         
         roi_reg_label = roi_reg_label[nms_res]
         flattened_roi_reg_label = torch.zeros(len(nms_res),324).to(device)
-        for i, label in enumerate(cls_label):
+        #flattened_roi_reg_label = torch.zeros(len(roi_cls_label),324).to(device)
+        for i, label in enumerate(roi_cls_label):
             flattened_roi_reg_label[i][label*4:(label+1)*4] = roi_reg_label[i]
 
         print(f"debug: reg label:  {roi_reg_label.shape}")
@@ -632,19 +633,25 @@ def trainOneEpoch(dataloader, net, optimizer, rpn_cls_criterion, rpn_loc_criteri
         roi_loc_score          = roi_loc_criterion(roi_locs.float(), flattened_roi_reg_label.float())
         #roi_loc_loss_0 = 0
         roi_loc_loss_1 = 0
-        for i, label in enumerate(cls_label):
-            roi_loc_score[i][:label*4].zero_()
-            roi_loc_score[i][(label+1)*4:].zero_()
-            roi_loc_loss_1 += roi_loc_score[i][label*4:(label+1)*4].mean()
+        for i, label in enumerate(roi_cls_label):
+            if label !=0:
+                roi_loc_score[i][:label*4].zero_()
+                roi_loc_score[i][(label+1)*4:].zero_()
+                roi_loc_loss_1 += roi_loc_score[i][label*4:(label+1)*4]
+            else:
+                roi_loc_score[i].zero_()
 
 
         print(f"debug: cls label shape:  {cls_label.shape}")
         print(f"debug: roi loc loss 1 shape: {roi_loc_loss_1.shape}")
         print(f"debug: cls label:  {cls_label}")
         print(f"debug: roi loc loss 1 : {roi_loc_loss_1}")
+        #print(f"debug: num of samples : {len(roi_cls_label)}")
+        print(f"debug: num of samples : {len(nms_res)}")
 
 
-        roi_loc_loss = roi_loc_loss_1.mean()
+        #roi_loc_loss = roi_loc_loss_1.mean()/len(roi_cls_label)
+        roi_loc_loss = roi_loc_loss_1.mean()/len(nms_res)
         total_loss = (rpn_cls_loss + 2*rpn_loc_loss) + roi_cls_loss + roi_loc_loss
         #total_loss = (rpn_cls_loss + 2*rpn_loc_loss)
         #print("debug: totoalloss", total_loss.grad_fn)
@@ -678,8 +685,8 @@ def trainOneEpoch(dataloader, net, optimizer, rpn_cls_criterion, rpn_loc_criteri
         avg_train   = train_loss/(batch_idx+1)
         avg_rpn_cls = train_rpn_cls_loss/(batch_idx+1)
         avg_rpn_reg = train_rpn_reg_loss/(batch_idx+1)
-        avg_roi_cls = train_rpn_cls_loss/(batch_idx+1)
-        avg_roi_reg = train_rpn_reg_loss/(batch_idx+1)
+        avg_roi_cls = train_roi_cls_loss/(batch_idx+1)
+        avg_roi_reg = train_roi_reg_loss/(batch_idx+1)
         logging.info(f"------------ Batch Training Result (Epoch {epoch})----------------")
         logging.info(f"    {batch_idx}. Ave. train loss: {avg_train}")
         logging.info(f"                      average rpn cls loss: {avg_rpn_cls}     current rpn cls loss: {rpn_cls_loss.item()}")
@@ -722,7 +729,7 @@ def train():
     #transform_train = transforms.Compose([transforms.ToTensor()])
     transform_train = transforms.Compose([transforms.ToTensor(),
                                           transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])])
-    coco_train = CocoDetection("/home/hhwu/datasets/coco/train2017", "/home/hhwu/datasets/coco/annotations/instances_train2017.json", transform=transform_train, target_transform=None)
+    coco_train = CocoDetection("/home/us000147/datasets/coco/train2017", "/home/us000147/datasets/coco/annotations/instances_train2017.json", transform=transform_train, target_transform=None)
     dataloader = DataLoader(coco_train, batch_size=1, shuffle=True, num_workers=0)
 
 
@@ -738,7 +745,7 @@ def train():
 
     # lr=0.002 no convergence ~ 30K overfitting?
     # lr=0.01 no convergence for fg/bg overfitting?
-    optimizer = optim.SGD(net.parameters(), lr=0.003, momentum=0.9, weight_decay=1e-4)
+    optimizer = optim.SGD(net.parameters(), lr=0.0001, momentum=0.9, weight_decay=1e-4)
     scheduler = lr_scheduler.MultiStepLR(optimizer, milestones=[1,2], gamma=0.1)
 
     #summary(resnet_50)
