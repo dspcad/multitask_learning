@@ -591,7 +591,7 @@ def trainOneEpoch(dataloader, net, optimizer, rpn_cls_criterion, rpn_loc_criteri
         #################
         #fg_cls_label = torch.stack(fg_cls_label).contiguous().view(-1,1).to(device)
         fg_cls_label = fg_cls_label.to(device)
-        rpn_cls_loss  = rpn_cls_criterion(cls_output, fg_cls_label)
+        rpn_cls_loss = rpn_cls_criterion(cls_output, fg_cls_label)
         #print(f"debug fg_cls_loss: {torch.exp(-fg_cls_loss[fg_cls_label != -1])}")
         #fg_cls_loss  = fg_cls_score[fg_cls_label != -1]
         #fg_cls_loss  = fg_cls_loss.mean()
@@ -617,7 +617,7 @@ def trainOneEpoch(dataloader, net, optimizer, rpn_cls_criterion, rpn_loc_criteri
         ############################
         roi_cls_label = roi_cls_label[nms_res]
         print(f"debug: cls_label:  {roi_cls_label}")
-        roi_cls_loss = roi_cls_criterion(roi_scores, roi_cls_label)
+        roi_cls_loss  = roi_cls_criterion(roi_scores, roi_cls_label)
 
         #selected_pos = [i for i, x in enumerate(cls_label) if x!=0 ]
         #selected_neg = [i for i, x in enumerate(cls_label) if x==0 ]
@@ -632,27 +632,28 @@ def trainOneEpoch(dataloader, net, optimizer, rpn_cls_criterion, rpn_loc_criteri
         print(f"debug: reg output: {roi_locs.shape}")
         roi_loc_score          = roi_loc_criterion(roi_locs.float(), flattened_roi_reg_label.float())
         #roi_loc_loss_0 = 0
-        roi_loc_loss_1 = 0
+        roi_loc_loss = 0
         for i, label in enumerate(roi_cls_label):
             if label !=0:
                 roi_loc_score[i][:label*4].zero_()
                 roi_loc_score[i][(label+1)*4:].zero_()
-                roi_loc_loss_1 += roi_loc_score[i][label*4:(label+1)*4]
+                roi_loc_loss += roi_loc_score[i][label*4:(label+1)*4]
             else:
                 roi_loc_score[i].zero_()
 
 
         print(f"debug: cls label shape:  {cls_label.shape}")
-        print(f"debug: roi loc loss 1 shape: {roi_loc_loss_1.shape}")
+        print(f"debug: roi loc loss 1 shape: {roi_loc_loss.shape}")
         print(f"debug: cls label:  {cls_label}")
-        print(f"debug: roi loc loss 1 : {roi_loc_loss_1}")
+        print(f"debug: roi loc loss: {roi_loc_loss}")
         #print(f"debug: num of samples : {len(roi_cls_label)}")
         print(f"debug: num of samples : {len(nms_res)}")
 
 
         #roi_loc_loss = roi_loc_loss_1.mean()/len(roi_cls_label)
-        roi_loc_loss = roi_loc_loss_1.mean()/len(nms_res)
-        total_loss = (rpn_cls_loss + 2*rpn_loc_loss) + roi_cls_loss + roi_loc_loss
+        roi_loc_loss = roi_loc_loss.mean()/(4*len(nms_res))
+        total_loss = rpn_cls_loss + 2*rpn_loc_loss + roi_cls_loss + roi_loc_loss
+        #total_loss = rpn_cls_loss + 2*rpn_loc_loss + roi_cls_loss 
         #total_loss = (rpn_cls_loss + 2*rpn_loc_loss)
         #print("debug: totoalloss", total_loss.grad_fn)
 
@@ -664,12 +665,11 @@ def trainOneEpoch(dataloader, net, optimizer, rpn_cls_criterion, rpn_loc_criteri
         optimizer.step()
   
 
-        train_loss += total_loss.item()
-        train_rpn_cls_loss += rpn_cls_loss.item()
-        train_rpn_reg_loss += rpn_loc_loss.item()
-        train_roi_cls_loss += roi_cls_loss.item()
-        train_roi_reg_loss += roi_loc_loss.item()
-
+        train_loss         += float(total_loss.item())
+        train_rpn_cls_loss += float(rpn_cls_loss.item())
+        train_rpn_reg_loss += float(rpn_loc_loss.item())
+        train_roi_cls_loss += float(roi_cls_loss.item())
+        train_roi_reg_loss += float(roi_loc_loss.item())
 
         total = 0
 
@@ -697,10 +697,10 @@ def trainOneEpoch(dataloader, net, optimizer, rpn_cls_criterion, rpn_loc_criteri
         logging.info("---------------------------------------------------")
 
         writer.add_scalar("Loss/train", avg_train, batch_idx)
-        writer.add_scalar("Loss/train_rpn_cls", train_rpn_cls_loss, batch_idx)
-        writer.add_scalar("Loss/train_rpn_loc", train_rpn_reg_loss, batch_idx)
-        writer.add_scalar("Loss/train_roi_cls", train_roi_cls_loss, batch_idx)
-        writer.add_scalar("Loss/train_roi_loc", train_roi_reg_loss, batch_idx)
+        writer.add_scalar("Loss/avg_rpn_cls", avg_rpn_cls, batch_idx)
+        writer.add_scalar("Loss/avg_rpn_loc", avg_rpn_reg, batch_idx)
+        writer.add_scalar("Loss/avg_roi_cls", avg_roi_cls, batch_idx)
+        writer.add_scalar("Loss/avg_roi_loc", avg_roi_reg, batch_idx)
 
 
 
@@ -751,7 +751,7 @@ def train():
     #summary(resnet_50)
     #model = torchvision.models.resnet50()
     #summary(model)
-    train_loss = 0
+    train_loss         = 0
     train_rpn_cls_loss = 0
     train_rpn_reg_loss = 0
     train_roi_cls_loss = 0

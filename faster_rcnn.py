@@ -58,7 +58,7 @@ class FasterRCNN(nn.Module):
 
             x1 = min(x1,x2-1)
             y1 = min(y1,y2-1)
-            print(f"debug: x1:{x1}   y1:{y1}  x2:{x2}  y2:{y2}   roi shape: {roi.shape}")
+            #print(f"debug: x1:{x1}   y1:{y1}  x2:{x2}  y2:{y2}   roi shape: {roi.shape}")
 
             roi = feat_map[0,:,y1:y2,x1:x2]
 
