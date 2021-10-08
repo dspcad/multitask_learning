@@ -298,7 +298,7 @@ def label_assignment_vec(anchor, target, img, scale_x, scale_y, index_inside):
         #print(f"debug: vec {tbl_vec.shape} runtime {end-start}")
 
 
-    raw_fg_cls_label = np.copy(fg_cls_label)
+    #raw_fg_cls_label = np.copy(fg_cls_label)
     #print(f"   raw pos: {np.count_nonzero(raw_fg_cls_label)}")
     #print(f"       pos: {np.count_nonzero(fg_cls_label)}")
 
@@ -313,7 +313,7 @@ def label_assignment_vec(anchor, target, img, scale_x, scale_y, index_inside):
     fg_cls_label = torch.from_numpy(fg_cls_label).to(device)
     reg_label = torch.from_numpy(reg_label).to(device)
 
-    return raw_fg_cls_label, fg_cls_label, reg_label, cls_label
+    return fg_cls_label, reg_label, cls_label
 
 
 
@@ -526,7 +526,7 @@ def trainOneEpoch(dataloader, net, optimizer, rpn_cls_criterion, rpn_loc_criteri
         #########################################################
         #   Generate the labels for RPN cls loss and loc loss   #
         #########################################################
-        raw_fg_cls_label, fg_cls_label, reg_label, cls_label = label_assignment_vec(net.rpn.anchor, target, img, scale_x, scale_y, valid_anchor_index)
+        fg_cls_label, reg_label, cls_label = label_assignment_vec(net.rpn.anchor, target, img, scale_x, scale_y, valid_anchor_index)
 
         roi_cls_label = cls_label[cls_label!=-1]
         roi_reg_label = reg_label[cls_label!=-1]
@@ -534,11 +534,11 @@ def trainOneEpoch(dataloader, net, optimizer, rpn_cls_criterion, rpn_loc_criteri
         print(f"debug: roi reg label:  {roi_reg_label.shape}")
 
 
-        if 1 not in raw_fg_cls_label:
+        if 1 not in fg_cls_label:
             continue
 
 
-        loc_output, cls_output, anchor, roi, roi_locs, roi_scores, nms_res = net(img, cls_label)
+        loc_output, cls_output, anchor, roi_locs, roi_scores, nms_res = net(img, cls_label)
         logging.debug(f"debug cls_output: {cls_output.shape}")
         logging.debug(f"debug loc_output: {loc_output.shape}")
         #index_inside = np.where((anchor[:, 0] >= 0) & (anchor[:, 1] >= 0) & (anchor[:, 2] <= img.shape[3]) & (anchor[:, 3] <= img.shape[2]))[0]
@@ -561,12 +561,12 @@ def trainOneEpoch(dataloader, net, optimizer, rpn_cls_criterion, rpn_loc_criteri
         #mask = torch.from_numpy(mask).view(-1,4).to(device)
         #loc_output.register_hook(lambda grad: grad * mask.float())
         reg_label = reg_label.contiguous().view(-1,4).to(device)
-        raw_fg_cls_label = torch.from_numpy(np.array(raw_fg_cls_label)).flatten().to(device)
+        fg_cls_label = fg_cls_label.flatten().to(device)
 
         rpn_loc_score          = rpn_loc_criterion(loc_output.float(), reg_label.float())
-        rpn_loc_loss_1         = rpn_loc_score[raw_fg_cls_label == 1]
-        rpn_loc_loss_0         = rpn_loc_score[raw_fg_cls_label == 0].zero_()
-        rpn_loc_loss_dont_care = rpn_loc_score[raw_fg_cls_label == -1].zero_()
+        rpn_loc_loss_1         = rpn_loc_score[fg_cls_label == 1]
+        rpn_loc_loss_0         = rpn_loc_score[fg_cls_label == 0].zero_()
+        rpn_loc_loss_dont_care = rpn_loc_score[fg_cls_label == -1].zero_()
         #rpn_loc_loss_1.retain_grad()
         #rpn_loc_loss_0.retain_grad()
         #rpn_loc_loss_dont_care.retain_grad()
@@ -651,7 +651,7 @@ def trainOneEpoch(dataloader, net, optimizer, rpn_cls_criterion, rpn_loc_criteri
 
 
         #roi_loc_loss = roi_loc_loss_1.mean()/len(roi_cls_label)
-        roi_loc_loss = roi_loc_loss.mean()/(4*len(nms_res))
+        roi_loc_loss = roi_loc_loss.mean()/(2*len(nms_res))
         total_loss = rpn_cls_loss + 2*rpn_loc_loss + roi_cls_loss + roi_loc_loss
         #total_loss = rpn_cls_loss + 2*rpn_loc_loss + roi_cls_loss 
         #total_loss = (rpn_cls_loss + 2*rpn_loc_loss)
@@ -688,12 +688,12 @@ def trainOneEpoch(dataloader, net, optimizer, rpn_cls_criterion, rpn_loc_criteri
         avg_roi_cls = train_roi_cls_loss/(batch_idx+1)
         avg_roi_reg = train_roi_reg_loss/(batch_idx+1)
         logging.info(f"------------ Batch Training Result (Epoch {epoch})----------------")
-        logging.info(f"    {batch_idx}. Ave. train loss: {avg_train}")
-        logging.info(f"                      average rpn cls loss: {avg_rpn_cls}     current rpn cls loss: {rpn_cls_loss.item()}")
-        logging.info(f"                      average rpn reg loss: {avg_rpn_reg}     current rpn reg loss: {rpn_loc_loss.item()}")
-        logging.info(f"                      average roi cls loss: {avg_roi_cls}     current roi cls loss: {roi_cls_loss.item()}")
-        logging.info(f"                      average roi reg loss: {avg_roi_reg}     current roi reg loss: {roi_loc_loss.item()}")
-        logging.info(f"    Total: {total} correct: {correct}   Accu. : {correct/total}  (learning rate: {optimizer.param_groups[0]['lr']})")
+        logging.info(f"    {batch_idx}. Ave. train loss: {avg_train:4.6f}")
+        logging.info(f"                      average rpn cls loss: {avg_rpn_cls:4.6f}     current rpn cls loss: {rpn_cls_loss.item():4.6f}")
+        logging.info(f"                      average rpn reg loss: {avg_rpn_reg:4.6f}     current rpn reg loss: {rpn_loc_loss.item():4.6f}")
+        logging.info(f"                      average roi cls loss: {avg_roi_cls:4.6f}     current roi cls loss: {roi_cls_loss.item():4.6f}")
+        logging.info(f"                      average roi reg loss: {avg_roi_reg:4.6f}     current roi reg loss: {roi_loc_loss.item():4.6f}")
+        logging.info(f"    Total: {total} correct: {correct}   Accu. : {correct/total:2.4f}  (learning rate: {optimizer.param_groups[0]['lr']})")
         logging.info("---------------------------------------------------")
 
         writer.add_scalar("Loss/train", avg_train, batch_idx)

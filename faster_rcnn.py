@@ -76,7 +76,7 @@ class FasterRCNN(nn.Module):
         roi_scores = self.fc_cls(out)
         roi_locs   = self.fc_loc(out)
          
-        return rpn_locs, rpn_scores, self.rpn.anchor, rois, roi_locs, roi_scores, nms_res
+        return rpn_locs, rpn_scores, self.rpn.anchor, roi_locs, roi_scores, nms_res
 
 
 
