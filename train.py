@@ -33,6 +33,13 @@ device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 mapped_ids = {}
 original_ids = {}
 
+cnt = 1
+train_loss         = 0
+train_rpn_cls_loss = 0
+train_rpn_reg_loss = 0
+train_roi_cls_loss = 0
+train_roi_reg_loss = 0
+
 def loadLabels():
     print("---------- Load coco.name ---------")
     global categories
@@ -470,7 +477,9 @@ def rescale(img, side_len):
 #
 #    return img[0], scale_x, scale_y
 
-def check_bbox(targets, img, num):
+def check_bbox(targets, img):
+    print(f"debug:   img shape:  {img.shape}")
+    img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
     for obj in targets:
         #bbox = [float(b.numpy()) for b in obj['bbox']]
         #print("debug: ", obj['bbox'])
@@ -487,25 +496,28 @@ def check_bbox(targets, img, num):
             #cv2.imshow(' ', img)
             #cv2.waitKey()
 
-        #cv2.rectangle(img, (x1, y1), (x2, y2), (255,0,0), 1)
-        #cate_id = int(obj['category_id'].numpy())
-        #logging.info("    {}     {} {} {} {}".format(categories[cate_id], x1, y1, x2, y2))
+        cv2.rectangle(img, (x1, y1), (x2, y2), (255,0,0), 1)
+        cate_id = int(obj['category_id'].numpy())
+        logging.info("    {}     {} {} {} {}".format(categories[cate_id], x1, y1, x2, y2))
+
+    return img
 
 
 
 
-def trainOneEpoch(dataloader, net, optimizer, rpn_cls_criterion, rpn_loc_criterion, roi_cls_criterion, roi_loc_criterion, epoch, train_loss, train_rpn_cls_loss, train_rpn_reg_loss, train_roi_cls_loss, train_roi_reg_loss):
+def trainOneEpoch(dataloader, net, optimizer, rpn_cls_criterion, rpn_loc_criterion, roi_cls_criterion, roi_loc_criterion, epoch):
+    global cnt, train_loss, train_rpn_cls_loss, train_rpn_reg_loss, train_roi_cls_loss, train_roi_reg_loss
 
     for batch_idx, (img, target) in enumerate(dataloader):
         img, scale_x, scale_y = rescale(img, 600)
 
-        #print(f"debug:   img shape:  {img.shape}")
+        print(f"debug:   img shape:  {img.shape}")
 
-        #cv2.imshow(' ', img)
+
+       
+        #res = check_bbox(target, img[0].permute(1, 2, 0).numpy())
+        #cv2.imshow(' ', res)
         #cv2.waitKey()
-
-        #if num==2:
-        #    break
 
 
         ################################################
@@ -682,11 +694,11 @@ def trainOneEpoch(dataloader, net, optimizer, rpn_cls_criterion, rpn_loc_criteri
             if fg_cls_label[i]==label:
                 correct += 1
 
-        avg_train   = train_loss/(batch_idx+1)
-        avg_rpn_cls = train_rpn_cls_loss/(batch_idx+1)
-        avg_rpn_reg = train_rpn_reg_loss/(batch_idx+1)
-        avg_roi_cls = train_roi_cls_loss/(batch_idx+1)
-        avg_roi_reg = train_roi_reg_loss/(batch_idx+1)
+        avg_train   = train_loss/cnt
+        avg_rpn_cls = train_rpn_cls_loss/cnt
+        avg_rpn_reg = train_rpn_reg_loss/cnt
+        avg_roi_cls = train_roi_cls_loss/cnt
+        avg_roi_reg = train_roi_reg_loss/cnt
         logging.info(f"------------ Batch Training Result (Epoch {epoch})----------------")
         logging.info(f"    {batch_idx}. Ave. train loss: {avg_train:4.6f}")
         logging.info(f"                      average rpn cls loss: {avg_rpn_cls:4.6f}     current rpn cls loss: {rpn_cls_loss.item():4.6f}")
@@ -697,10 +709,10 @@ def trainOneEpoch(dataloader, net, optimizer, rpn_cls_criterion, rpn_loc_criteri
         logging.info("---------------------------------------------------")
 
         writer.add_scalar("Loss/train", avg_train, batch_idx)
-        writer.add_scalar("Loss/avg_rpn_cls", avg_rpn_cls, batch_idx)
-        writer.add_scalar("Loss/avg_rpn_loc", avg_rpn_reg, batch_idx)
-        writer.add_scalar("Loss/avg_roi_cls", avg_roi_cls, batch_idx)
-        writer.add_scalar("Loss/avg_roi_loc", avg_roi_reg, batch_idx)
+        writer.add_scalar("Loss/avg_rpn_cls", avg_rpn_cls, cnt)
+        writer.add_scalar("Loss/avg_rpn_loc", avg_rpn_reg, cnt)
+        writer.add_scalar("Loss/avg_roi_cls", avg_roi_cls, cnt)
+        writer.add_scalar("Loss/avg_roi_loc", avg_roi_reg, cnt)
 
 
 
@@ -711,7 +723,8 @@ def trainOneEpoch(dataloader, net, optimizer, rpn_cls_criterion, rpn_loc_criteri
              torch.save( net.state_dict(), os.path.join( "./savedModels/",'fasterRCNN_itr_'+str(batch_idx)+'.pth') )
 
 
-    return train_loss, train_rpn_cls_loss, train_rpn_reg_loss, train_roi_cls_loss, train_roi_reg_loss
+        cnt +=1
+
 
 def train():
     logging.info("    1. Construct Faster-RCNN")
@@ -729,7 +742,8 @@ def train():
     #transform_train = transforms.Compose([transforms.ToTensor()])
     transform_train = transforms.Compose([transforms.ToTensor(),
                                           transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])])
-    coco_train = CocoDetection("/home/us000147/datasets/coco/train2017", "/home/us000147/datasets/coco/annotations/instances_train2017.json", transform=transform_train, target_transform=None)
+    coco_train = CocoDetection("/home/hhwu/datasets/coco/train2017", "/home/hhwu/datasets/coco/annotations/instances_train2017.json", transform=transform_train, target_transform=None)
+    #coco_train = CocoDetection("/home/hhwu/datasets/coco/train2017", "/home/hhwu/Downloads/instances_train2017.json", transform=transform_train, target_transform=None)
     dataloader = DataLoader(coco_train, batch_size=1, shuffle=True, num_workers=0)
 
 
@@ -751,14 +765,9 @@ def train():
     #summary(resnet_50)
     #model = torchvision.models.resnet50()
     #summary(model)
-    train_loss         = 0
-    train_rpn_cls_loss = 0
-    train_rpn_reg_loss = 0
-    train_roi_cls_loss = 0
-    train_roi_reg_loss = 0
 
     for epoch in range(1,5):
-        train_loss, train_rpn_cls_loss, train_rpn_reg_loss, train_roi_cls_loss, train_roi_reg_loss = trainOneEpoch(dataloader, net, optimizer, rpn_cls_criterion, rpn_loc_criterion, roi_cls_criterion, roi_loc_criterion, epoch, train_loss, train_rpn_cls_loss, train_rpn_reg_loss, train_roi_cls_loss, train_roi_reg_loss)
+        trainOneEpoch(dataloader, net, optimizer, rpn_cls_criterion, rpn_loc_criterion, roi_cls_criterion, roi_loc_criterion, epoch)
         scheduler.step()
 
     writer.flush()
