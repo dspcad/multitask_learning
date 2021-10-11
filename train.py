@@ -719,8 +719,8 @@ def trainOneEpoch(dataloader, net, optimizer, rpn_cls_criterion, rpn_loc_criteri
 
 
 
-        if batch_idx >0 and batch_idx%10000==0:
-             torch.save( net.state_dict(), os.path.join( "./savedModels/",'fasterRCNN_itr_'+str(batch_idx)+'.pth') )
+        if cnt >0 and cnt%10000==0:
+             torch.save( net.state_dict(), os.path.join( "./savedModels/",'fasterRCNN_itr_'+str(cnt)+'.pth') )
 
 
         cnt +=1
