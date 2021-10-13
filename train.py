@@ -699,7 +699,9 @@ def trainOneEpoch(dataloader, net, optimizer, rpn_cls_criterion, rpn_loc_criteri
         avg_rpn_reg = train_rpn_reg_loss/cnt
         avg_roi_cls = train_roi_cls_loss/cnt
         avg_roi_reg = train_roi_reg_loss/cnt
-        logging.info(f"------------ Batch Training Result (Epoch {epoch})----------------")
+        logging.info(f"------------ Batch Training Result ----------------")
+        logging.info(f"    Epoch: {epoch}        Cumulative Samples: {cnt}")
+        logging.info(f"                                                   ")
         logging.info(f"    {batch_idx}. Ave. train loss: {avg_train:4.6f}")
         logging.info(f"                      average rpn cls loss: {avg_rpn_cls:4.6f}     current rpn cls loss: {rpn_cls_loss.item():4.6f}")
         logging.info(f"                      average rpn reg loss: {avg_rpn_reg:4.6f}     current rpn reg loss: {rpn_loc_loss.item():4.6f}")
@@ -751,15 +753,16 @@ def train():
     #rpn_cls_criterion = nn.CrossEntropyLoss(ignore_index=-1)
     #rpn_loc_criterion = nn.SmoothL1Loss()
     #rpn_loc_criterion = nn.L1Loss()
-    #rpn_loc_criterion = nn.L1Loss(reduction='none')
-    rpn_loc_criterion = nn.SmoothL1Loss(reduction='none')
+    #rpn_loc_criterion = nn.SmoothL1Loss(reduction='none')
+    rpn_loc_criterion = nn.L1Loss(reduction='none')
 
     roi_cls_criterion = nn.CrossEntropyLoss(ignore_index=-1, reduction='mean')
-    roi_loc_criterion = nn.SmoothL1Loss(reduction='none')
+    #roi_loc_criterion = nn.SmoothL1Loss(reduction='none')
+    roi_loc_criterion = nn.L1Loss(reduction='none')
 
     # lr=0.002 no convergence ~ 30K overfitting?
     # lr=0.01 no convergence for fg/bg overfitting?
-    optimizer = optim.SGD(net.parameters(), lr=0.001, momentum=0.9, weight_decay=5e-4)
+    optimizer = optim.SGD(net.parameters(), lr=0.0001, momentum=0.9, weight_decay=5e-4)
     scheduler = lr_scheduler.MultiStepLR(optimizer, milestones=[1,2], gamma=0.1)
 
     #summary(resnet_50)
