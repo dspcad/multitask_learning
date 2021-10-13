@@ -149,27 +149,28 @@ def IoU(bb1=list(),bb2=list()):
 #    return fg_cls_label
 
 
-def gen_mini_batch(fg_cls_label,cls_label):
+def gen_mini_batch(fg_cls_label,cls_label,batch_size=256):
     res_idx_0 = np.array(np.where(fg_cls_label == 0)).flatten()
     res_idx_1 = np.array(np.where(fg_cls_label == 1)).flatten()
 
-    logging.info("Generate mini batch: ")
+    logging.info(f"Generate mini batch: {batch_size}")
     logging.info("    Before: ")
     logging.info(f"    # of pos: {len(res_idx_1)}")
     logging.info(f"    # of neg: {len(res_idx_0)}")
 
 
-    batch_size = min(len(res_idx_0),len(res_idx_1))
+    batch_size_1 = min(len(res_idx_1),int(batch_size/2))
+    batch_size_0 = batch_size - batch_size_1
 
-    if len(res_idx_0) > batch_size:
-        non_selected_idx_of_neg = np.random.choice(res_idx_0, len(res_idx_0)-batch_size,replace=False)
+    if len(res_idx_0) > batch_size_0:
+        non_selected_idx_of_neg = np.random.choice(res_idx_0, len(res_idx_0)-batch_size_0,replace=False)
         for idx in non_selected_idx_of_neg:
             fg_cls_label[idx]=-1
             cls_label[idx]=-1
 
 
-    if len(res_idx_1) > batch_size:
-        non_selected_idx_of_pos = np.random.choice(res_idx_1, len(res_idx_1)-batch_size,replace=False)
+    if len(res_idx_1) > batch_size_1:
+        non_selected_idx_of_pos = np.random.choice(res_idx_1, len(res_idx_1)-batch_size_1,replace=False)
         for idx in non_selected_idx_of_pos:
             fg_cls_label[idx]=-1
             cls_label[idx]=-1
@@ -194,17 +195,19 @@ def label_assignment_vec(anchor, target, img, scale_x, scale_y, index_inside):
     tbl = np.zeros((gt_bbox,num_anchor))
     #logging.info(f"# of gt bboxes: {gt_bbox}   # of anchors: {num_anchor}   # of valid anchors: {len(index_inside)}")
 
-    fg_cls_label = np.full(num_anchor,-1)
-    cls_label    = np.full(num_anchor,-1)
-    reg_label    = np.zeros((num_anchor,4))
-
 
 
     if gt_bbox == 0:
         logging.debug(f"    No gt bbox: {gt_bbox}")
         fg_cls_label = np.full(num_anchor,0)
-
+        cls_label    = np.full(num_anchor,0)
+        reg_label    = np.zeros((num_anchor,4))
     else:
+        fg_cls_label = np.full(num_anchor,-1)
+        cls_label    = np.full(num_anchor,-1)
+        reg_label    = np.zeros((num_anchor,4))
+
+
         start = time.time()
         # x, y, w, h
         gt_bbox_xywh = [[target[i]['bbox'][0]*scale_x, target[i]['bbox'][1]*scale_y, target[i]['bbox'][2]*scale_x, target[i]['bbox'][3]*scale_y] for i in range(0,gt_bbox) if int(target[i]['bbox'][2]+0.5)!=0 and int(target[i]['bbox'][3]+0.5)!=0]
@@ -309,7 +312,7 @@ def label_assignment_vec(anchor, target, img, scale_x, scale_y, index_inside):
     #print(f"   raw pos: {np.count_nonzero(raw_fg_cls_label)}")
     #print(f"       pos: {np.count_nonzero(fg_cls_label)}")
 
-    fg_cls_label, cls_label = gen_mini_batch(fg_cls_label,cls_label)
+    fg_cls_label, cls_label = gen_mini_batch(fg_cls_label,cls_label,256)
     logging.info(f"# of fg anchors: {np.count_nonzero(fg_cls_label == 1)}")
     logging.info(f"# of bg anchors: {np.count_nonzero(fg_cls_label == 0)}")
     logging.info(f"# of dont care anchors: {np.count_nonzero(fg_cls_label == -1)}")
@@ -324,119 +327,6 @@ def label_assignment_vec(anchor, target, img, scale_x, scale_y, index_inside):
 
 
 
-def label_assignment(anchor, target, img, scale_x, scale_y, index_inside):
-    # img is pytorch tensor
-    # batch, channel, height, width
-    _, height, width = img.shape
-    gt_bbox   = len(target)
-    num_anchor = anchor.shape[0]
-    tbl = np.zeros((gt_bbox,num_anchor))
-    #logging.info(f"# of gt bboxes: {gt_bbox}   # of anchors: {num_anchor}   # of valid anchors: {len(index_inside)}")
-
-    fg_cls_label = np.full(num_anchor,-1)
-    reg_label = np.zeros((num_anchor,4))
-
-    start = time.time()
-    for i in range(0,gt_bbox):
-        obj = target[i]
-        #bbox = [float(b.numpy()) for b in obj['bbox']]
-        #print("debug: ", obj['bbox'])
-        bbox = obj['bbox']
-        #x,y,w,h = [a*scale for a in bbox]
-        x,y,w,h = bbox[0]*scale_x, bbox[1]*scale_y, bbox[2]*scale_x, bbox[3]*scale_y
-
-        x1,y1,x2,y2 = int(x+0.5),int(y+0.5),int(x+w+0.5),int(y+h+0.5)
-        if x1==x2 or y1==y2:
-            logging.info(f"WARNNING:    x1:{x1} y1:{y1} x2:{x2} y2:{y2}")
-            continue
-
-        #cv2.rectangle(img, (x1, y1), (x2, y2), (255,0,0), 1)
-        #cate_id = int(obj['category_id'].numpy())
-        #logging.info("    {}     {} {} {} {}".format(categories[cate_id], x1, y1, x2, y2))
-        #cv2.putText(img, "{}".format(categories[cate_id]), (x1, y1 - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0,255,0), 1)
-        #for j in range(0,num_anchor):
-        for j in index_inside:
-            wa = anchor[j][2]-anchor[j][0]
-            ha = anchor[j][3]-anchor[j][1]
-            xa = anchor[j][0]+wa/2
-            ya = anchor[j][1]+ha/2
-
-            #tbl[i][j] = IoU([x1,y1,x2,y2], anchor[j]) if abs(xa-x)*2< (w+wa) and abs(ya-y)*2 < (h+ha) else 0
-            if abs(xa-x)*2< (w+wa) and abs(ya-y)*2 < (h+ha):
-                tbl[i][j] = IoU([x1,y1,x2,y2], anchor[j])
-
-                #tx
-                reg_label[j][0] = (x-xa)/wa
-                #ty
-                reg_label[j][1] = (y-ya)/ha
-                #tw
-                reg_label[j][2] = np.log(w/wa)
-                #th
-                reg_label[j][3] = np.log(h/ha)
-
-
-
-
-
-            
-
-        #foreground: the highest IoU with a gt box
-        #foreground: IoU > 0.7 with any gt box
-        max_v = np.max(tbl[i])
-        if max_v > 0:
-            fg_cls_label[np.logical_or(tbl[i]>0.7, tbl[i] == max_v)] = 1
-
-        #for j in range(0,num_anchor):
-        #    if tbl[i][j] == max_v or tbl[i][j]>0.7:
-        #        fg_cls_label[j] = 1
-        #        anchor_x1 = int(max(anchor[j][0],0))
-        #        anchor_y1 = int(max(anchor[j][1],0))
-        #        anchor_x2 = int(min(anchor[j][2],width-1))
-        #        anchor_y2 = int(min(anchor[j][3],height-1))
-        #        cate_id = int(obj['category_id'].numpy())
-        #        cv2.rectangle(img, (anchor_x1, anchor_y1), (anchor_x2, anchor_y2), (255,0,0), 1)
-        #        logging.debug("    anchor > 0.0: {}     {} {} {} {}".format(categories[cate_id], anchor_x1, anchor_y1, anchor_x2, anchor_y2))
-        #        cv2.putText(img, "{} {} {} {}".format(anchor_x1, anchor_y1, anchor_x2, anchor_y2), (anchor_x1, anchor_y1 - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0,255,0), 1)
-        #        logging.debug(f"    reg label:  {reg_label[j]}")
-
-
-    end = time.time()
-    #logging.info(f"    FG selection runtime {end-start}")
-
-
-    start = time.time()
-    if gt_bbox == 0:
-        logging.debug(f"    No gt bbox: {gt_bbox}")
-        fg_cls_label = np.full(num_anchor,0)
-
-    else:
-        #background: IoU < 0.3 for all gt boxes
-        #for j in range(0,num_anchor):
-        for j in index_inside:
-            #idx = np.argmax(tbl[:,j])
-            max_v = np.max(tbl[:,j])
-            if max_v < 0.3 and fg_cls_label[j] != 1:
-            #if tbl[idx][j] == 0:
-            #if max_v == 0:
-                fg_cls_label[j] = 0
-
-    end = time.time()
-    logging.info(f"    BG selection runtime {end-start}")
-
-    raw_fg_cls_label = np.copy(fg_cls_label)
-    #print(f"   raw pos: {np.count_nonzero(raw_fg_cls_label)}")
-    #print(f"       pos: {np.count_nonzero(fg_cls_label)}")
-
-    fg_cls_label = gen_mini_batch(fg_cls_label,256)
-    #logging.info(f"# of fg anchors: {np.count_nonzero(fg_cls_label == 1)}")
-    #logging.info(f"# of bg anchors: {np.count_nonzero(fg_cls_label == 0)}")
-    #logging.info(f"# of dont care anchors: {np.count_nonzero(fg_cls_label == -1)}")
-
-
-    fg_cls_label = torch.from_numpy(fg_cls_label).to(device)
-    reg_label = torch.from_numpy(reg_label).to(device)
-
-    return raw_fg_cls_label, fg_cls_label, reg_label
 
 
 def rescale(img, side_len):
@@ -479,6 +369,7 @@ def rescale(img, side_len):
 
 def check_bbox(targets, img):
     print(f"debug:   img shape:  {img.shape}")
+    print(f"           targets:  {targets}")
     img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
     for obj in targets:
         #bbox = [float(b.numpy()) for b in obj['bbox']]
@@ -508,16 +399,16 @@ def check_bbox(targets, img):
 def trainOneEpoch(dataloader, net, optimizer, rpn_cls_criterion, rpn_loc_criterion, roi_cls_criterion, roi_loc_criterion, epoch):
     global cnt, train_loss, train_rpn_cls_loss, train_rpn_reg_loss, train_roi_cls_loss, train_roi_reg_loss
 
-    for batch_idx, (img, target) in enumerate(dataloader):
-        img, scale_x, scale_y = rescale(img, 600)
-
-        print(f"debug:   img shape:  {img.shape}")
-
-
-       
-        #res = check_bbox(target, img[0].permute(1, 2, 0).numpy())
+    for batch_idx, (raw_img, target) in enumerate(dataloader):
+        print(f"debug:   img shape:  {raw_img.shape}")
+        #res = check_bbox(target, raw_img[0].permute(1, 2, 0).cpu().numpy())
         #cv2.imshow(' ', res)
         #cv2.waitKey()
+
+
+        img, scale_x, scale_y = rescale(raw_img, 600)
+
+       
 
 
         ################################################
@@ -545,9 +436,12 @@ def trainOneEpoch(dataloader, net, optimizer, rpn_cls_criterion, rpn_loc_criteri
         print(f"debug: roi cls label:  {cls_label.shape}")
         print(f"debug: roi reg label:  {roi_reg_label.shape}")
 
-
-        if 1 not in fg_cls_label:
-            continue
+   
+        #if 1 not in fg_cls_label:
+        #    res = check_bbox(target, raw_img[0].permute(1, 2, 0).cpu().numpy())
+        #    cv2.imshow(' ', res)
+        #    cv2.waitKey()
+        #    break
 
 
         loc_output, cls_output, anchor, roi_locs, roi_scores, nms_res = net(img, cls_label)
@@ -655,7 +549,6 @@ def trainOneEpoch(dataloader, net, optimizer, rpn_cls_criterion, rpn_loc_criteri
 
 
         print(f"debug: cls label shape:  {cls_label.shape}")
-        print(f"debug: roi loc loss 1 shape: {roi_loc_loss.shape}")
         print(f"debug: cls label:  {cls_label}")
         print(f"debug: roi loc loss: {roi_loc_loss}")
         #print(f"debug: num of samples : {len(roi_cls_label)}")
@@ -663,7 +556,10 @@ def trainOneEpoch(dataloader, net, optimizer, rpn_cls_criterion, rpn_loc_criteri
 
 
         #roi_loc_loss = roi_loc_loss_1.mean()/len(roi_cls_label)
-        roi_loc_loss = roi_loc_loss.mean()/(2*len(nms_res))
+
+        if torch.is_tensor(roi_loc_loss):
+            roi_loc_loss = roi_loc_loss.mean()/(2*len(nms_res))
+
         total_loss = rpn_cls_loss + 2*rpn_loc_loss + roi_cls_loss + roi_loc_loss
         #total_loss = rpn_cls_loss + 2*rpn_loc_loss + roi_cls_loss 
         #total_loss = (rpn_cls_loss + 2*rpn_loc_loss)
@@ -677,11 +573,11 @@ def trainOneEpoch(dataloader, net, optimizer, rpn_cls_criterion, rpn_loc_criteri
         optimizer.step()
   
 
-        train_loss         += float(total_loss.item())
-        train_rpn_cls_loss += float(rpn_cls_loss.item())
-        train_rpn_reg_loss += float(rpn_loc_loss.item())
-        train_roi_cls_loss += float(roi_cls_loss.item())
-        train_roi_reg_loss += float(roi_loc_loss.item())
+        train_loss         += float(total_loss)
+        train_rpn_cls_loss += float(rpn_cls_loss)
+        train_rpn_reg_loss += float(rpn_loc_loss)
+        train_roi_cls_loss += float(roi_cls_loss)
+        train_roi_reg_loss += float(roi_loc_loss)
 
         total = 0
 
@@ -762,7 +658,7 @@ def train():
 
     # lr=0.002 no convergence ~ 30K overfitting?
     # lr=0.01 no convergence for fg/bg overfitting?
-    optimizer = optim.SGD(net.parameters(), lr=0.0001, momentum=0.9, weight_decay=5e-4)
+    optimizer = optim.SGD(net.parameters(), lr=0.0003, momentum=0.9, weight_decay=5e-4)
     scheduler = lr_scheduler.MultiStepLR(optimizer, milestones=[1,2], gamma=0.1)
 
     #summary(resnet_50)
