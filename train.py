@@ -487,7 +487,8 @@ def trainOneEpoch(dataloader, net, optimizer, rpn_cls_criterion, rpn_loc_criteri
         logging.debug("loss_dont_care: ", torch.mean(rpn_loc_loss_dont_care).item())
         #rpn_loc_loss = torch.mean(rpn_loc_loss_1) + torch.mean(rpn_loc_loss_0) + torch.mean(rpn_loc_loss_dont_care)
         #rpn_loc_loss = torch.mean(rpn_loc_loss_1)
-        rpn_loc_loss = rpn_loc_loss_1.mean()
+
+        rpn_loc_loss = rpn_loc_loss_1.mean() if len(rpn_loc_loss_1) != 0 else 0
         #print("debug: rpn_loc_loss", rpn_loc_loss.grad_fn)
         #rpn_loc_loss.retain_grad()
         #rpn_loc_loss = rpn_loc_criterion(loc_output[raw_fg_cls_label==1].float(),reg_label[raw_fg_cls_label==1].float())
@@ -600,9 +601,9 @@ def trainOneEpoch(dataloader, net, optimizer, rpn_cls_criterion, rpn_loc_criteri
         logging.info(f"                                                   ")
         logging.info(f"    {batch_idx}. Ave. train loss: {avg_train:4.6f}")
         logging.info(f"                      average rpn cls loss: {avg_rpn_cls:4.6f}     current rpn cls loss: {rpn_cls_loss.item():4.6f}")
-        logging.info(f"                      average rpn reg loss: {avg_rpn_reg:4.6f}     current rpn reg loss: {rpn_loc_loss.item():4.6f}")
+        logging.info(f"                      average rpn reg loss: {avg_rpn_reg:4.6f}     current rpn reg loss: {float(rpn_loc_loss):4.6f}")
         logging.info(f"                      average roi cls loss: {avg_roi_cls:4.6f}     current roi cls loss: {roi_cls_loss.item():4.6f}")
-        logging.info(f"                      average roi reg loss: {avg_roi_reg:4.6f}     current roi reg loss: {roi_loc_loss.item():4.6f}")
+        logging.info(f"                      average roi reg loss: {avg_roi_reg:4.6f}     current roi reg loss: {float(roi_loc_loss):4.6f}")
         logging.info(f"    Total: {total} correct: {correct}   Accu. : {correct/total:2.4f}  (learning rate: {optimizer.param_groups[0]['lr']})")
         logging.info("---------------------------------------------------")
 
@@ -658,7 +659,7 @@ def train():
 
     # lr=0.002 no convergence ~ 30K overfitting?
     # lr=0.01 no convergence for fg/bg overfitting?
-    optimizer = optim.SGD(net.parameters(), lr=0.0003, momentum=0.9, weight_decay=5e-4)
+    optimizer = optim.SGD(net.parameters(), lr=0.0002, momentum=0.9, weight_decay=5e-4)
     scheduler = lr_scheduler.MultiStepLR(optimizer, milestones=[1,2], gamma=0.1)
 
     #summary(resnet_50)
