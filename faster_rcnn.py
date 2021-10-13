@@ -80,4 +80,50 @@ class FasterRCNN(nn.Module):
 
 
 
+    def forward(self, x):
+        feat_map = self.extractor(x)
+        _, ch, hh, ww = feat_map.shape
+
+        rpn_locs, rpn_scores, rois = self.rpn(feat_map)
+
+        nms_res = torchvision.ops.nms(rois, rpn_scores[:,1],0.6)
+        valid_rois = rois[nms_res]
+        batch_rois = []
+        for roi in valid_rois:
+            #x ,y is the center of roi
+            x, y, w, h = roi
+            x, y, w, h = int(x+0.5), int(y+0.5), int(w+0.5), int(h+0.5)
+
+            #print(f"debug: x:{x}   y:{y}  w:{w}  h:{h}   ww: {ww}  hh: {hh}")
+            x1 = (x-w/2)/32
+            y1 = (y-h/2)/32
+            x2 = (x+w/2)/32
+            y2 = (y+h/2)/32
+
+            x1 = int(min(max(x1,0),ww-1))
+            y1 = int(min(max(y1,0),hh-1))
+            x2 = int(min(max(x2,1),ww))
+            y2 = int(min(max(y2,1),hh))
+
+            x1 = min(x1,x2-1)
+            y1 = min(y1,y2-1)
+            #print(f"debug: x1:{x1}   y1:{y1}  x2:{x2}  y2:{y2}   roi shape: {roi.shape}")
+
+            roi = feat_map[0,:,y1:y2,x1:x2]
+
+
+            roi = self.roi_pooling(roi)
+            batch_rois.append(roi)
+
+        batch_rois = torch.stack(batch_rois)
+        #print(f"debug: batch_rois: {torch.tensor(batch_rois).shape}")
+        batch_rois = batch_rois.contiguous().view(len(nms_res),-1)
+        #batch_rois = batch_rois.contiguous().view(len(valid_rois),-1)
+        print(f"debug: batch_rois: {batch_rois.shape}")
+        out        = self.fc1(torch.tensor(batch_rois))
+        out        = self.fc2(out)
+        roi_scores = self.fc_cls(out)
+        roi_locs   = self.fc_loc(out)
+         
+        return rpn_locs, rpn_scores, self.rpn.anchor, roi_locs, roi_scores, nms_res
 
