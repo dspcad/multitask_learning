@@ -238,7 +238,7 @@ def label_assignment_vec(anchor, target, img, scale_x, scale_y, index_inside):
             ya = anchor[j][1]+ha/2
  
 
-            if max_iou_each_anchor[j]>0.5:
+            if max_iou_each_anchor[j]>0.7:
                 target_gt_bbox = max_idx_each_anchor[j]
                 x, y, w, h = gt_bbox_xywh[ target_gt_bbox ]
                 #tx
@@ -296,7 +296,7 @@ def label_assignment_vec(anchor, target, img, scale_x, scale_y, index_inside):
         #     if the iou of rule 2. is small, the iou of background should be smaller than it. #
         ########################################################################################
         for j in index_inside:
-            if max_iou_each_anchor[j]<0.1 and fg_cls_label[j] != 1:
+            if max_iou_each_anchor[j]<0.3 and fg_cls_label[j] != 1:
                 fg_cls_label[j] = 0
                 cls_label[j]    = 0
 
@@ -312,7 +312,7 @@ def label_assignment_vec(anchor, target, img, scale_x, scale_y, index_inside):
     #print(f"   raw pos: {np.count_nonzero(raw_fg_cls_label)}")
     #print(f"       pos: {np.count_nonzero(fg_cls_label)}")
 
-    fg_cls_label, cls_label = gen_mini_batch(fg_cls_label,cls_label,256)
+    fg_cls_label, cls_label = gen_mini_batch(fg_cls_label,cls_label,64)
     logging.info(f"# of fg anchors: {np.count_nonzero(fg_cls_label == 1)}")
     logging.info(f"# of bg anchors: {np.count_nonzero(fg_cls_label == 0)}")
     logging.info(f"# of dont care anchors: {np.count_nonzero(fg_cls_label == -1)}")
@@ -400,15 +400,12 @@ def trainOneEpoch(dataloader, net, optimizer, rpn_cls_criterion, rpn_loc_criteri
     global cnt, train_loss, train_rpn_cls_loss, train_rpn_reg_loss, train_roi_cls_loss, train_roi_reg_loss
 
     for batch_idx, (raw_img, target) in enumerate(dataloader):
-        print(f"debug:   img shape:  {raw_img.shape}")
+        print(f"debug:   raw img shape:  {raw_img.shape}")
+        img, scale_x, scale_y = rescale(raw_img, 600)
         #res = check_bbox(target, raw_img[0].permute(1, 2, 0).cpu().numpy())
         #cv2.imshow(' ', res)
         #cv2.waitKey()
 
-
-        img, scale_x, scale_y = rescale(raw_img, 600)
-
-       
 
 
         ################################################
@@ -523,7 +520,7 @@ def trainOneEpoch(dataloader, net, optimizer, rpn_cls_criterion, rpn_loc_criteri
         #    2nd Stage: ROI Head   #
         ############################
         roi_cls_label = roi_cls_label[nms_res]
-        print(f"debug: cls_label:  {roi_cls_label}")
+        print(f"debug: roi_cls_label after nms:  {roi_cls_label}")
         roi_cls_loss  = roi_cls_criterion(roi_scores, roi_cls_label)
 
         #selected_pos = [i for i, x in enumerate(cls_label) if x!=0 ]
@@ -585,11 +582,29 @@ def trainOneEpoch(dataloader, net, optimizer, rpn_cls_criterion, rpn_loc_criteri
         # max value, index
         _, predicted = cls_output.max(1)
         correct = 0
+        TP = 0
+        TN = 0
+        pred_pos_num = 0
+        gt_pos_num = 0
         for i, label in enumerate(predicted):
             if fg_cls_label[i]!=-1:
                 total += 1
+
+                if fg_cls_label[i]==1:
+                    gt_pos_num += 1
+
+                if label==1:
+                    pred_pos_num += 1
+
             if fg_cls_label[i]==label:
                 correct += 1
+                if label==1:
+                    TP +=1
+
+        precision = 0 if pred_pos_num == 0 else TP/pred_pos_num
+        recall    = 0 if gt_pos_num == 0 else TP/gt_pos_num
+
+            
 
         avg_train   = train_loss/cnt
         avg_rpn_cls = train_rpn_cls_loss/cnt
@@ -605,6 +620,8 @@ def trainOneEpoch(dataloader, net, optimizer, rpn_cls_criterion, rpn_loc_criteri
         logging.info(f"                      average roi cls loss: {avg_roi_cls:4.6f}     current roi cls loss: {roi_cls_loss.item():4.6f}")
         logging.info(f"                      average roi reg loss: {avg_roi_reg:4.6f}     current roi reg loss: {float(roi_loc_loss):4.6f}")
         logging.info(f"    Total: {total} correct: {correct}   Accu. : {correct/total:2.4f}  (learning rate: {optimizer.param_groups[0]['lr']})")
+        logging.info(f"                                  Precision:  {precision:2.4f}  {TP}/{pred_pos_num}")
+        logging.info(f"                                  Recall:     {recall:2.4f}  {TP}/{gt_pos_num}")
         logging.info("---------------------------------------------------")
 
         writer.add_scalar("Loss/train", avg_train, batch_idx)
