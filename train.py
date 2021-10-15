@@ -402,6 +402,7 @@ def trainOneEpoch(dataloader, net, optimizer, rpn_cls_criterion, rpn_loc_criteri
     for batch_idx, (raw_img, target) in enumerate(dataloader):
         print(f"debug:   raw img shape:  {raw_img.shape}")
         img, scale_x, scale_y = rescale(raw_img, 600)
+        print(f"debug:   rescaled img shape:  {img.shape}")
         #res = check_bbox(target, raw_img[0].permute(1, 2, 0).cpu().numpy())
         #cv2.imshow(' ', res)
         #cv2.waitKey()
@@ -556,9 +557,19 @@ def trainOneEpoch(dataloader, net, optimizer, rpn_cls_criterion, rpn_loc_criteri
         #roi_loc_loss = roi_loc_loss_1.mean()/len(roi_cls_label)
 
         if torch.is_tensor(roi_loc_loss):
-            roi_loc_loss = roi_loc_loss.mean()/(2*len(nms_res))
+            roi_loc_loss = roi_loc_loss.mean()/len(nms_res)
 
-        total_loss = rpn_cls_loss + 2*rpn_loc_loss + roi_cls_loss + roi_loc_loss
+        num_pos = (fg_cls_label==1).sum()
+        if num_pos == 0:
+            factor = 0
+        else:
+            factor = min(10,64/num_pos)
+
+        print(f"debug: factor for rpn loc reg: {factor}")
+        rpn_loc_loss = factor*rpn_loc_loss
+
+        total_loss = rpn_cls_loss + rpn_loc_loss + roi_cls_loss + roi_loc_loss
+        #total_loss = rpn_cls_loss + 2*rpn_loc_loss + roi_cls_loss + roi_loc_loss
         #total_loss = rpn_cls_loss + 2*rpn_loc_loss + roi_cls_loss 
         #total_loss = (rpn_cls_loss + 2*rpn_loc_loss)
         #print("debug: totoalloss", total_loss.grad_fn)
@@ -667,12 +678,12 @@ def train():
     #rpn_cls_criterion = nn.CrossEntropyLoss(ignore_index=-1)
     #rpn_loc_criterion = nn.SmoothL1Loss()
     #rpn_loc_criterion = nn.L1Loss()
-    #rpn_loc_criterion = nn.SmoothL1Loss(reduction='none')
-    rpn_loc_criterion = nn.L1Loss(reduction='none')
+    rpn_loc_criterion = nn.SmoothL1Loss(reduction='none')
+    #rpn_loc_criterion = nn.L1Loss(reduction='none')
 
     roi_cls_criterion = nn.CrossEntropyLoss(ignore_index=-1, reduction='mean')
-    #roi_loc_criterion = nn.SmoothL1Loss(reduction='none')
-    roi_loc_criterion = nn.L1Loss(reduction='none')
+    roi_loc_criterion = nn.SmoothL1Loss(reduction='none')
+    #roi_loc_criterion = nn.L1Loss(reduction='none')
 
     # lr=0.002 no convergence ~ 30K overfitting?
     # lr=0.01 no convergence for fg/bg overfitting?
