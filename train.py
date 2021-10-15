@@ -238,7 +238,7 @@ def label_assignment_vec(anchor, target, img, scale_x, scale_y, index_inside):
             ya = anchor[j][1]+ha/2
  
 
-            if max_iou_each_anchor[j]>0.7:
+            if max_iou_each_anchor[j]>0.5:
                 target_gt_bbox = max_idx_each_anchor[j]
                 x, y, w, h = gt_bbox_xywh[ target_gt_bbox ]
                 #tx
@@ -296,7 +296,7 @@ def label_assignment_vec(anchor, target, img, scale_x, scale_y, index_inside):
         #     if the iou of rule 2. is small, the iou of background should be smaller than it. #
         ########################################################################################
         for j in index_inside:
-            if max_iou_each_anchor[j]<0.3 and fg_cls_label[j] != 1:
+            if max_iou_each_anchor[j]<0.1 and fg_cls_label[j] != 1:
                 fg_cls_label[j] = 0
                 cls_label[j]    = 0
 
@@ -312,7 +312,7 @@ def label_assignment_vec(anchor, target, img, scale_x, scale_y, index_inside):
     #print(f"   raw pos: {np.count_nonzero(raw_fg_cls_label)}")
     #print(f"       pos: {np.count_nonzero(fg_cls_label)}")
 
-    fg_cls_label, cls_label = gen_mini_batch(fg_cls_label,cls_label,64)
+    fg_cls_label, cls_label = gen_mini_batch(fg_cls_label,cls_label,128)
     logging.info(f"# of fg anchors: {np.count_nonzero(fg_cls_label == 1)}")
     logging.info(f"# of bg anchors: {np.count_nonzero(fg_cls_label == 0)}")
     logging.info(f"# of dont care anchors: {np.count_nonzero(fg_cls_label == -1)}")
