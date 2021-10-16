@@ -238,7 +238,7 @@ def label_assignment_vec(anchor, target, img, scale_x, scale_y, index_inside):
             ya = anchor[j][1]+ha/2
  
 
-            if max_iou_each_anchor[j]>0.5:
+            if max_iou_each_anchor[j]>0.7:
                 target_gt_bbox = max_idx_each_anchor[j]
                 x, y, w, h = gt_bbox_xywh[ target_gt_bbox ]
                 #tx
@@ -260,43 +260,45 @@ def label_assignment_vec(anchor, target, img, scale_x, scale_y, index_inside):
         #max_anchor_v_each_gt, max_anchor_idx_each_gt = torch.max(tbl_vec, 1)
         #print(f"debug: max_anchor_v_each_gt    {max_anchor_v_each_gt}")
         for i in range(0, gt_bbox):
-            j = index_inside[0]
-            iou = tbl_vec[i][j]
+            #j = index_inside[0]
+            max_iou = tbl_vec[i][index_inside[0]]
 
-            for k in index_inside:
-                if tbl_vec[i][k] > iou:
-                    iou = tbl_vec[i][k]
-                    j = k
+            for j in index_inside:
+                if tbl_vec[i][j] > max_iou:
+                    max_iou = tbl_vec[i][j]
+                    #j = k
 
-            if iou > 0 and fg_cls_label[j] != 1:
 
-                wa = anchor[j][2]-anchor[j][0]
-                ha = anchor[j][3]-anchor[j][1]
-                xa = anchor[j][0]+wa/2
-                ya = anchor[j][1]+ha/2
+            for j in index_inside:
+                if max_iou-tbl_vec[i][j]<0.00001 and fg_cls_label[j] != 1:
+                    wa = anchor[j][2]-anchor[j][0]
+                    ha = anchor[j][3]-anchor[j][1]
+                    xa = anchor[j][0]+wa/2
+                    ya = anchor[j][1]+ha/2
  
-                x, y, w, h = gt_bbox_xywh[i]
+                    x, y, w, h = gt_bbox_xywh[i]
 
-                #tx
-                reg_label[j][0] = (x-xa)/wa
-                #ty
-                reg_label[j][1] = (y-ya)/ha
-                #tw
-                reg_label[j][2] = np.log(w/wa)
-                #th
-                reg_label[j][3] = np.log(h/ha)
+                    #tx
+                    reg_label[j][0] = (x-xa)/wa
+                    #ty
+                    reg_label[j][1] = (y-ya)/ha
+                    #tw
+                    reg_label[j][2] = np.log(w/wa)
+                    #th
+                    reg_label[j][3] = np.log(h/ha)
 
-                fg_cls_label[j] = 1
-                cls_label[j]    = gt_bbox_cls_label[i]
-                #print(f"hhwu DEBUG: {iou}    x:{x}  y:{y}  w:{w}  h:{h}")
-                #print(f"          : anchor:{j}    xa:{xa}  ya:{ya}  wa:{wa}  ha:{ha}")
+                    fg_cls_label[j] = 1
+                    cls_label[j]    = gt_bbox_cls_label[i]
+                    print(f"          max iou {max_iou} : anchor {j}({tbl_vec[i][j]}):    xa:{xa}  ya:{ya}  wa:{wa}  ha:{ha}")
+            #print(f"hhwu DEBUG: {iou}    x:{x}  y:{y}  w:{w}  h:{h}")
+            #print(f"          : anchor:{j}    xa:{xa}  ya:{ya}  wa:{wa}  ha:{ha}")
 
         ########################################################################################
         #   3. Background assignment                                                           #
         #     if the iou of rule 2. is small, the iou of background should be smaller than it. #
         ########################################################################################
         for j in index_inside:
-            if max_iou_each_anchor[j]<0.1 and fg_cls_label[j] != 1:
+            if max_iou_each_anchor[j]<0.3 and fg_cls_label[j] != 1:
                 fg_cls_label[j] = 0
                 cls_label[j]    = 0
 
