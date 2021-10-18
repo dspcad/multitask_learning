@@ -257,17 +257,23 @@ def label_assignment_vec(anchor, target, img, scale_x, scale_y, index_inside):
         #   2. For some ground truth, find the anchor that has the largest IoU   #
         ##########################################################################
 
-        #max_anchor_v_each_gt, max_anchor_idx_each_gt = torch.max(tbl_vec, 1)
+        max_anchor_iou_each_gt, max_anchor_iou_idx_each_gt = torch.max(tbl_vec, 1)
         #print(f"debug: max_anchor_v_each_gt    {max_anchor_v_each_gt}")
         for i in range(0, gt_bbox):
             #j = index_inside[0]
-            max_iou = tbl_vec[i][index_inside[0]]
 
+            if max_anchor_iou_each_gt[i]>0.7:
+                continue
+
+            max_iou = 0
             for j in index_inside:
-                if tbl_vec[i][j] > max_iou:
+                if tbl_vec[i][j] > max_iou and fg_cls_label[j] != 1:
                     max_iou = tbl_vec[i][j]
                     #j = k
 
+
+            if max_iou==0:
+                continue
 
             for j in index_inside:
                 if max_iou-tbl_vec[i][j]<0.00001 and fg_cls_label[j] != 1:
