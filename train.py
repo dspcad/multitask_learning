@@ -19,6 +19,8 @@ from faster_rcnn import FasterRCNN
 import cv2, math
 import numpy as np
 
+import target_transform
+
 import logging, sys, time, os
 logging.basicConfig(format='%(levelname)-4s %(message)s',level=logging.INFO)
 
@@ -31,7 +33,7 @@ torch.multiprocessing.set_sharing_strategy('file_system')
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 mapped_ids = {}
-original_ids = {}
+categories = {}
 
 cnt = 1
 train_loss         = 0
@@ -43,27 +45,30 @@ train_roi_reg_loss = 0
 def loadLabels():
     print("---------- Load coco.name ---------")
     global categories
-    with open("coco.names", "r") as f:
-
-        categories = f.read().split("\n")
-        categories = [x for x in categories if x]
-        categories.insert(0,'background')
-        logging.info("COCO Dataset classes: {}".format(len(categories)))
-        #for i, cls in enumerate(categories):
-        #    print(f"{i}:  {cls}")
-    print("-----------------------------")
-    print("---------- Load coco.mapping ---------")
     global mapped_ids
-    with open("coco.mapping", "r") as f:
+    categories[0] = 'background'
+    mapped_ids[0] = 0
 
-        ids = f.read().split("\n")
-        ids = [x for x in ids if x]
-        for i, key in enumerate(ids):
-            key = int(key)
-            i   = int(i)
-            mapped_ids[key]=i
-            original_ids[i]=key
-            print(f"mapped: {key} ->  {mapped_ids[key]}    original: {i} -> {key}")
+    cnt = 1
+    with open("coco.names", "r") as f:
+        lines = f.read().split("\n")
+        for l in lines:
+            if len(l) == 0:
+                continue
+            pos = l.find(" ")
+            categories[int(l[0:pos])] = l[pos+1:].strip()
+            #mapped_ids[cnt] = int(l[0:pos])
+            mapped_ids[int(l[0:pos])] = cnt
+            cnt +=1
+
+
+        logging.info("COCO Dataset classes: {}".format(len(categories)))
+
+        for k in categories:
+            print(f"{k} -> {categories[k]}")
+        for k in mapped_ids:
+            print(f"mapped: {k}({categories[k]}) -> {mapped_ids[k]}")
+
     print("-----------------------------")
 
 
@@ -186,7 +191,7 @@ def gen_mini_batch(fg_cls_label,cls_label,batch_size=256):
     return fg_cls_label, cls_label
 
 
-def label_assignment_vec(anchor, target, img, scale_x, scale_y, index_inside):
+def label_assignment_vec(anchor, target, img, index_inside):
     # img is pytorch tensor
     # batch, channel, height, width
     bsize, _, height, width = img.shape
@@ -210,10 +215,10 @@ def label_assignment_vec(anchor, target, img, scale_x, scale_y, index_inside):
 
         start = time.time()
         # x, y, w, h
-        gt_bbox_xywh = [[target[i]['bbox'][0]*scale_x, target[i]['bbox'][1]*scale_y, target[i]['bbox'][2]*scale_x, target[i]['bbox'][3]*scale_y] for i in range(0,gt_bbox) if int(target[i]['bbox'][2]+0.5)!=0 and int(target[i]['bbox'][3]+0.5)!=0]
+        gt_bbox_xywh = [[target[i]['bbox'][0], target[i]['bbox'][1], target[i]['bbox'][2], target[i]['bbox'][3]] for i in range(0,gt_bbox) if int(target[i]['bbox'][2]+0.5)!=0 and int(target[i]['bbox'][3]+0.5)!=0]
 
         #print(f"cls id: {int(target[0]['category_id'].data[0])} -> {mapped_ids[int(target[0]['category_id'].data[0])]}")
-        gt_bbox_cls_label = [mapped_ids[int(target[i]['category_id'].data[0])] for i in range(0,gt_bbox) if int(target[i]['bbox'][2]+0.5)!=0 and int(target[i]['bbox'][3]+0.5)!=0]
+        gt_bbox_cls_label = [mapped_ids[int(target[i]['category_id'])] for i in range(0,gt_bbox) if int(target[i]['bbox'][2]+0.5)!=0 and int(target[i]['bbox'][3]+0.5)!=0]
 
         # x1, y1, x2, y2
         gt_anchor_x1y1x2y2 = torch.tensor([[int(bbox[0]+0.5),int(bbox[1]+0.5),int(bbox[2]+bbox[0]+0.5),int(bbox[3]+bbox[1]+0.5)] for bbox in gt_bbox_xywh])
@@ -376,15 +381,16 @@ def rescale(img, side_len):
 #    return img[0], scale_x, scale_y
 
 def check_bbox(targets, img):
-    print(f"debug:   img shape:  {img.shape}")
-    print(f"           targets:  {targets}")
+    #print(f"debug:   img shape:  {img.shape}")
+    #print(f"           targets:  {targets}")
     img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
     for obj in targets:
         #bbox = [float(b.numpy()) for b in obj['bbox']]
         #print("debug: ", obj['bbox'])
         bbox = obj['bbox']
         x,y,w,h = [a for a in bbox]
-        cate_id = int(obj['category_id'].numpy())
+        #cate_id = int(obj['category_id'].numpy())
+        cate_id = obj['category_id']
         x1,y1,x2,y2 = int(x+0.5),int(y+0.5),int(x+w+0.5),int(y+h+0.5)
 
         if w==0 or h==0:
@@ -396,7 +402,9 @@ def check_bbox(targets, img):
             #cv2.waitKey()
 
         cv2.rectangle(img, (x1, y1), (x2, y2), (255,0,0), 1)
-        cate_id = int(obj['category_id'].numpy())
+        #cate_id = int(obj['category_id'].numpy())
+        cate_id = obj['category_id']
+        print(f"cate id: {cate_id}")
         logging.info("    {}     {} {} {} {}".format(categories[cate_id], x1, y1, x2, y2))
 
     return img
@@ -407,11 +415,16 @@ def check_bbox(targets, img):
 def trainOneEpoch(dataloader, net, optimizer, rpn_cls_criterion, rpn_loc_criterion, roi_cls_criterion, roi_loc_criterion, epoch):
     global cnt, train_loss, train_rpn_cls_loss, train_rpn_reg_loss, train_roi_cls_loss, train_roi_reg_loss
 
-    for batch_idx, (raw_img, target) in enumerate(dataloader):
-        print(f"debug:   raw img shape:  {raw_img.shape}")
-        img, scale_x, scale_y = rescale(raw_img, 600)
-        print(f"debug:   rescaled img shape:  {img.shape}")
-        #res = check_bbox(target, raw_img[0].permute(1, 2, 0).cpu().numpy())
+    for batch_idx, (img, target) in enumerate(dataloader):
+        img = torch.stack(img, dim=0)
+        target = target[0]
+        print(f"debug:   {target}")
+        print(f"debug:   {type(target)}")
+        print(f"debug:   img shape:  {img.shape}   {len(target)}")
+        #img, scale_x, scale_y = rescale(raw_img, 600)
+        # print(f"debug:   rescaled img shape:  {img.shape}")
+
+        #res = check_bbox(target[0], raw_img[0].permute(1, 2, 0).cpu().numpy())
         #cv2.imshow(' ', res)
         #cv2.waitKey()
 
@@ -435,7 +448,7 @@ def trainOneEpoch(dataloader, net, optimizer, rpn_cls_criterion, rpn_loc_criteri
         #########################################################
         #   Generate the labels for RPN cls loss and loc loss   #
         #########################################################
-        fg_cls_label, reg_label, cls_label = label_assignment_vec(net.rpn.anchor, target, img, scale_x, scale_y, valid_anchor_index)
+        fg_cls_label, reg_label, cls_label = label_assignment_vec(net.rpn.anchor, target, img, valid_anchor_index)
 
         roi_cls_label = cls_label[cls_label!=-1]
         roi_reg_label = reg_label[cls_label!=-1]
@@ -659,6 +672,13 @@ def trainOneEpoch(dataloader, net, optimizer, rpn_cls_criterion, rpn_loc_criteri
 
 
         cnt +=1
+###############################################################################################################
+# decouple the imgs and labels to avoid "RuntimeError: each element in list of batch should be of equal size" #
+###############################################################################################################
+def collate_fn(batch):
+    return zip(*batch)
+    #return tuple(zip(*batch))
+
 
 
 def train():
@@ -674,12 +694,13 @@ def train():
 
 
     logging.info("    2. Load coco train2017")
-    #transform_train = transforms.Compose([transforms.ToTensor()])
+    #transform_train = transforms.Compose([transforms.ToTensor(),transforms.Resize(size=(640,640))])
     transform_train = transforms.Compose([transforms.ToTensor(),
+                                          transforms.Resize(size=(640,640)),
                                           transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])])
-    coco_train = CocoDetection("/home/hhwu/datasets/coco/train2017", "/home/hhwu/datasets/coco/annotations/instances_train2017.json", transform=transform_train, target_transform=None)
+    coco_train = target_transform.CocoDetection("/home/hhwu/datasets/coco/train2017", "/home/hhwu/datasets/coco/annotations/instances_train2017.json", transform=transform_train, target_transform=target_transform.resize(640,640))
     #coco_train = CocoDetection("/home/hhwu/datasets/coco/train2017", "/home/hhwu/Downloads/instances_train2017.json", transform=transform_train, target_transform=None)
-    dataloader = DataLoader(coco_train, batch_size=1, shuffle=True, num_workers=0)
+    dataloader = DataLoader(coco_train, batch_size=1, shuffle=True, num_workers=0, collate_fn=collate_fn)
 
 
     rpn_cls_criterion = nn.CrossEntropyLoss(ignore_index=-1, reduction='mean')
